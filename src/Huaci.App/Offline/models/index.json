@@ -1,0 +1,16 @@
+{
+  "enzh": {
+    "lex": {
+      "name": "/models/en-zh/lex.50.50.enzh.s2t.bin"
+    },
+    "model": {
+      "name": "/models/en-zh/model.enzh.intgemm.alphas.bin"
+    },
+    "srcvocab": {
+      "name": "/models/en-zh/srcvocab.enzh.spm"
+    },
+    "trgvocab": {
+      "name": "/models/en-zh/trgvocab.enzh.spm"
+    }
+  }
+}

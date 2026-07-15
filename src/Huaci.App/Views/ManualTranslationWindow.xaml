@@ -1,0 +1,154 @@
+<Window x:Class="Huaci.App.Views.ManualTranslationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Huaci 手动翻译"
+        Width="360" Height="402"
+        MinWidth="360" MinHeight="402"
+        MaxWidth="360" MaxHeight="402"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        AllowsTransparency="True"
+        Background="Transparent"
+        WindowStartupLocation="CenterScreen"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="CompactWindowResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Border x:Name="WindowShell"
+            Background="{StaticResource SettingsPanelBrush}"
+            BorderBrush="Transparent"
+            BorderThickness="0"
+            CornerRadius="11">
+        <Grid ClipToBounds="True">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="42" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="25" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="34" />
+                </Grid.ColumnDefinitions>
+                <Border x:Name="HeaderDragArea"
+                        Grid.Column="0"
+                        Background="Transparent"
+                        MouseLeftButtonDown="Header_OnMouseLeftButtonDown">
+                    <StackPanel Margin="12,0,0,0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="&#xE774;"
+                                   FontFamily="{StaticResource IconFont}"
+                                   FontSize="15"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock Margin="8,0,0,0"
+                                   Text="手动翻译"
+                                   FontSize="13.5"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                        <TextBlock Margin="7,1,0,0"
+                                   Text="自动识别语言"
+                                   FontSize="9.5"
+                                   Foreground="{StaticResource TextWeakBrush}" />
+                    </StackPanel>
+                </Border>
+                <Button x:Name="HideButton"
+                        Grid.Column="1"
+                        Style="{StaticResource HeaderIconButton}"
+                        ToolTip="关闭"
+                        AutomationProperties.Name="关闭手动翻译"
+                        Click="HideButton_OnClick">
+                    <TextBlock Text="&#xE711;" FontFamily="{StaticResource IconFont}" FontSize="12" />
+                </Button>
+            </Grid>
+
+            <Grid Grid.Row="1" Margin="11,2,11,10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="82" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="40" />
+                </Grid.RowDefinitions>
+
+                <DockPanel Grid.Row="0" Margin="1,0,1,5" LastChildFill="False">
+                    <TextBlock Text="原文"
+                               FontSize="10.5"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}" />
+                    <TextBlock DockPanel.Dock="Right"
+                               Text="可粘贴或直接输入"
+                               FontSize="9.5"
+                               Foreground="{StaticResource TextWeakBrush}" />
+                </DockPanel>
+                <TextBox x:Name="SourceTextBox"
+                         Grid.Row="1"
+                         Height="Auto"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto"
+                         AutomationProperties.Name="原文" />
+
+                <DockPanel Grid.Row="2" Margin="1,10,1,5" LastChildFill="False">
+                    <TextBlock Text="简体中文"
+                               FontSize="10.5"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}" />
+                    <Button x:Name="CopyButton"
+                            DockPanel.Dock="Right"
+                            Width="44" Height="24" MinHeight="24"
+                            Margin="0,-4,0,-2"
+                            Padding="4,1"
+                            Content="复制"
+                            FontSize="9.5"
+                            Click="CopyButton_OnClick" />
+                </DockPanel>
+                <TextBox x:Name="ResultTextBox"
+                         Grid.Row="3"
+                         Height="Auto"
+                         MinHeight="104"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         IsReadOnly="True"
+                         VerticalScrollBarVisibility="Auto"
+                         AutomationProperties.Name="简体中文译文" />
+
+                <StackPanel Grid.Row="4"
+                            Margin="0,10,0,0"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right">
+                    <Button x:Name="ClearButton"
+                            Width="54"
+                            Margin="0,0,7,0"
+                            Content="清空"
+                            Click="ClearButton_OnClick" />
+                    <Button x:Name="TranslateButton"
+                            Width="76"
+                            Style="{StaticResource AccentButton}"
+                            Content="翻译"
+                            Click="TranslateButton_OnClick" />
+                </StackPanel>
+            </Grid>
+
+            <Border Grid.Row="2"
+                    Background="#48000000"
+                    CornerRadius="0,0,10,10"
+                    Padding="11,0">
+                <TextBlock x:Name="StatusTextBlock"
+                           Text="输入内容后开始翻译"
+                           FontSize="9.5"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
+                           VerticalAlignment="Center"
+                           AutomationProperties.LiveSetting="Polite" />
+            </Border>
+        </Grid>
+    </Border>
+</Window>

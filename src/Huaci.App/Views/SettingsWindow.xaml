@@ -1,0 +1,283 @@
+<Window x:Class="Huaci.App.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Huaci 设置"
+        Width="336" Height="438"
+        MinWidth="336" MinHeight="438"
+        MaxWidth="336" MaxHeight="438"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        AllowsTransparency="True"
+        Background="Transparent"
+        WindowStartupLocation="CenterScreen"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="CompactWindowResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Border x:Name="WindowShell"
+            Background="{StaticResource SettingsPanelBrush}"
+            BorderBrush="Transparent"
+            BorderThickness="0"
+            CornerRadius="11">
+        <Grid ClipToBounds="True">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="42" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="50" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="34" />
+                </Grid.ColumnDefinitions>
+
+                <Border x:Name="HeaderDragArea"
+                        Grid.Column="0"
+                        Background="Transparent"
+                        MouseLeftButtonDown="Header_OnMouseLeftButtonDown">
+                    <StackPanel Margin="12,0,0,0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="&#xE713;"
+                                   FontFamily="{StaticResource IconFont}"
+                                   FontSize="15"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock Margin="8,0,0,0"
+                                   Text="设置"
+                                   FontSize="13.5"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                        <TextBlock Margin="7,1,0,0"
+                                   Text="全部功能"
+                                   FontSize="9.5"
+                                   Foreground="{StaticResource TextWeakBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <Button x:Name="HideButton"
+                        Grid.Column="1"
+                        Style="{StaticResource HeaderIconButton}"
+                        ToolTip="关闭"
+                        AutomationProperties.Name="关闭设置"
+                        Click="HideButton_OnClick">
+                    <TextBlock Text="&#xE711;" FontFamily="{StaticResource IconFont}" FontSize="12" />
+                </Button>
+            </Grid>
+
+            <ScrollViewer x:Name="SettingsScrollViewer"
+                          Grid.Row="1"
+                          Margin="10,2,7,0"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          AutomationProperties.Name="全部设置">
+                <StackPanel Margin="0,0,3,10">
+                    <Border x:Name="CaptureSettingsSection" Style="{StaticResource SectionCard}">
+                        <StackPanel>
+                            <DockPanel LastChildFill="False">
+                                <StackPanel DockPanel.Dock="Left">
+                                    <TextBlock Text="划词行为" Style="{StaticResource SectionTitle}" />
+                                    <TextBlock Margin="0,3,0,0"
+                                               Text="控制自动识别与兼容取词。"
+                                               FontSize="9.5"
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                </StackPanel>
+                                <Border DockPanel.Dock="Right"
+                                        Padding="7,3"
+                                        Background="#2863D48C"
+                                        CornerRadius="8">
+                                    <TextBlock x:Name="CaptureStateTextBlock"
+                                               Text="运行中"
+                                               FontSize="9"
+                                               Foreground="{StaticResource SuccessBrush}" />
+                                </Border>
+                            </DockPanel>
+
+                            <CheckBox x:Name="AutoCaptureCheckBox"
+                                      Margin="0,13,0,0"
+                                      Content="划词后自动翻译"
+                                      AutomationProperties.Name="划词后自动翻译" />
+                            <TextBlock Margin="24,4,0,0"
+                                       Text="选中文字并松开鼠标后显示译文。"
+                                       FontSize="9"
+                                       Foreground="{StaticResource TextWeakBrush}" />
+
+                            <CheckBox x:Name="ClipboardFallbackCheckBox"
+                                      Margin="0,12,0,0"
+                                      Content="兼容模式（失败时尝试 Ctrl+C）"
+                                      AutomationProperties.Name="兼容取词模式" />
+                            <TextBlock Margin="24,4,0,0"
+                                       Text="部分浏览器或应用取词失败时再开启。"
+                                       FontSize="9"
+                                       Foreground="{StaticResource TextWeakBrush}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,9,0,0" Style="{StaticResource SectionCard}">
+                        <StackPanel>
+                            <TextBlock Text="响应与弹窗" Style="{StaticResource SectionTitle}" />
+                            <TextBlock Margin="0,3,0,0"
+                                       Text="保持即时反馈，同时避免误触。"
+                                       FontSize="9.5"
+                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                            <Grid Margin="0,11,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="响应 50–100 ms" Style="{StaticResource FieldLabel}" />
+                                    <TextBox x:Name="CaptureDelayTextBox"
+                                             Margin="0,4,0,0"
+                                             Text="60"
+                                             AutomationProperties.Name="取词响应毫秒数" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="最长停留 2–60 秒" Style="{StaticResource FieldLabel}" />
+                                    <TextBox x:Name="PopupDurationTextBox"
+                                             Margin="0,4,0,0"
+                                             Text="5"
+                                             AutomationProperties.Name="弹窗最长停留秒数" />
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock Margin="0,8,0,0"
+                                       Text="鼠标移出 Toast 时仍会立即收起；钉住后保持显示。"
+                                       TextWrapping="Wrap"
+                                       FontSize="9"
+                                       LineHeight="14"
+                                       Foreground="{StaticResource TextWeakBrush}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border x:Name="TranslationModeSettingsSection"
+                            Margin="0,9,0,0"
+                            Style="{StaticResource SectionCard}">
+                        <StackPanel>
+                            <DockPanel LastChildFill="False">
+                                <StackPanel DockPanel.Dock="Left">
+                                    <TextBlock Text="翻译模式" Style="{StaticResource SectionTitle}" />
+                                    <TextBlock Margin="0,3,0,0"
+                                               Text="内置模型优先，在线服务可选。"
+                                               FontSize="9.5"
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                </StackPanel>
+                                <Ellipse x:Name="OfflineStateDot"
+                                         DockPanel.Dock="Right"
+                                         Width="7" Height="7"
+                                         Margin="0,5,4,0"
+                                         Fill="{StaticResource SuccessBrush}" />
+                            </DockPanel>
+
+                            <ComboBox x:Name="TranslationModeComboBox"
+                                      Margin="0,12,0,0"
+                                      Height="30"
+                                      Padding="8,3"
+                                      Background="#FFE7EAF0"
+                                      Foreground="#FF25282E"
+                                      BorderBrush="#60747B88"
+                                      SelectedIndex="0"
+                                      AutomationProperties.Name="翻译模式">
+                                <ComboBoxItem Content="离线优先（推荐）" />
+                                <ComboBoxItem Content="仅离线（不发送文本）" />
+                                <ComboBoxItem Content="仅在线" />
+                            </ComboBox>
+
+                            <TextBlock x:Name="OfflineStateTextBlock"
+                                       Margin="1,7,0,0"
+                                       Text="内置英语 → 简体中文模型已就绪"
+                                       TextWrapping="Wrap"
+                                       FontSize="9"
+                                       LineHeight="14"
+                                       Foreground="{StaticResource TextWeakBrush}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border x:Name="ServiceSettingsSection"
+                            Margin="0,9,0,0"
+                            Style="{StaticResource SectionCard}">
+                        <StackPanel>
+                            <DockPanel LastChildFill="False">
+                                <StackPanel DockPanel.Dock="Left">
+                                    <TextBlock Text="在线服务（可选）" Style="{StaticResource SectionTitle}" />
+                                    <TextBlock Margin="0,3,0,0"
+                                               Text="用于其他语言或离线失败时回退。"
+                                               FontSize="9.5"
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                </StackPanel>
+                                <Ellipse x:Name="ServiceStateDot"
+                                         DockPanel.Dock="Right"
+                                         Width="7" Height="7"
+                                         Margin="0,5,4,0"
+                                         Fill="{StaticResource WarningBrush}" />
+                            </DockPanel>
+
+                            <TextBlock Margin="0,12,0,0" Text="API 地址" Style="{StaticResource FieldLabel}" />
+                            <TextBox x:Name="ApiBaseUrlTextBox"
+                                     Margin="0,4,0,0"
+                                     Text="https://api.deepseek.com"
+                                     AutomationProperties.Name="API 地址" />
+
+                            <TextBlock Margin="0,9,0,0" Text="模型" Style="{StaticResource FieldLabel}" />
+                            <TextBox x:Name="ModelTextBox"
+                                     Margin="0,4,0,0"
+                                     Text="deepseek-chat"
+                                     AutomationProperties.Name="模型" />
+
+                            <TextBlock Margin="0,9,0,0" Text="API Key" Style="{StaticResource FieldLabel}" />
+                            <PasswordBox x:Name="ApiKeyPasswordBox"
+                                         Margin="0,4,0,0"
+                                         AutomationProperties.Name="API Key" />
+                            <TextBlock x:Name="ApiKeyHintTextBlock"
+                                       Margin="1,5,0,0"
+                                       Text="尚未配置；密钥只保存在 Windows 凭据管理器"
+                                       TextWrapping="Wrap"
+                                       FontSize="9"
+                                       LineHeight="14"
+                                       Foreground="{StaticResource TextWeakBrush}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <Border Grid.Row="2"
+                    Background="#48000000"
+                    BorderBrush="#20FFFFFF"
+                    BorderThickness="0,1,0,0"
+                    CornerRadius="0,0,10,10">
+                <Grid Margin="10,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="StatusTextBlock"
+                               Margin="1,0,8,0"
+                               Text="全部设置集中在这里"
+                               FontSize="9.5"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
+                               VerticalAlignment="Center"
+                               AutomationProperties.LiveSetting="Polite" />
+                    <Button Grid.Column="1"
+                            Width="54"
+                            Margin="0,0,7,0"
+                            Content="关闭"
+                            Click="HideButton_OnClick" />
+                    <Button x:Name="SaveSettingsButton"
+                            Grid.Column="2"
+                            Width="76"
+                            Style="{StaticResource AccentButton}"
+                            Content="保存设置"
+                            Click="SaveSettingsButton_OnClick" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

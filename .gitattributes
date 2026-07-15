@@ -1,0 +1,7 @@
+* text=auto
+
+*.bin binary
+*.spm binary
+*.wasm binary
+*.png binary
+*.ico binary

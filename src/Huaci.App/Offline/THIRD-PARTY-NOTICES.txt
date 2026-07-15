@@ -1,0 +1,17 @@
+Huaci built-in offline translation notices
+
+Bergamot Translator
+Copyright Mozilla and Bergamot contributors.
+Licensed under the Mozilla Public License 2.0 (MPL-2.0).
+Source: https://github.com/browsermt/bergamot-translator
+Bundled npm package: @browsermt/bergamot-translator 0.4.9
+
+Mozilla Firefox Translations English-to-Chinese model
+Produced and published by the Mozilla Translations project.
+Project source: https://github.com/mozilla/translations
+Model registry: https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/db/models.json
+The corresponding Mozilla projects are licensed under MPL-2.0. The model registry
+does not currently expose a separate per-weight license field. This package records
+the exact model hashes in manifest.json for reproducibility.
+
+The complete MPL-2.0 text is included at licenses/MPL-2.0.txt.

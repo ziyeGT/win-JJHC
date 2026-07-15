@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/Huaci.App/Huaci.App.csproj" />
+  <Project Path="tests/Huaci.SmokeTests/Huaci.SmokeTests.csproj" />
+  <Project Path="tests/Huaci.UiTests/Huaci.UiTests.csproj" />
+</Solution>
