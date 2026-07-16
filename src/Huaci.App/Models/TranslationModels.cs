@@ -7,6 +7,12 @@ public sealed record TranslationRequest(
     string SourceLanguage = "auto",
     string TargetLanguage = "zh-CN");
 
+public enum TranslationDirection
+{
+    EnglishToSimplifiedChinese = 0,
+    SimplifiedChineseToEnglish = 1
+}
+
 public enum TranslationRouteMode
 {
     OfflineFirst = 0,

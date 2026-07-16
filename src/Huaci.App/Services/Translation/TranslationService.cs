@@ -163,7 +163,7 @@ public sealed class TranslationService : ITranslationService
         {
             throw new TranslationProviderException(
                 TranslationErrorKind.Configuration,
-                "未配置在线翻译 API Key。可在设置中配置，或使用内置英译中模型。");
+                "未配置在线翻译 API Key。可在设置中配置，或使用内置中英互译模型。");
         }
 
         TranslationResult result = await _onlineProvider.TranslateAsync(
@@ -176,5 +176,5 @@ public sealed class TranslationService : ITranslationService
 
     private static TranslationProviderException CreateUnsupportedLanguageException() => new(
         TranslationErrorKind.Configuration,
-        "当前内置离线模型仅支持英语翻译为简体中文；其他语言请使用在线模式。");
+        "当前内置离线模型仅支持英语与简体中文互译；其他语言请使用在线模式。");
 }

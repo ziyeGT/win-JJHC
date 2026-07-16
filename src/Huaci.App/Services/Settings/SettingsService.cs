@@ -189,6 +189,8 @@ public sealed class SettingsService : IDisposable
         {
             AutoCaptureEnabled = settings.AutoCaptureEnabled,
             ClipboardFallbackEnabled = settings.ClipboardFallbackEnabled,
+            ScreenshotTranslationEnabled = settings.ScreenshotTranslationEnabled,
+            StartWithWindowsEnabled = settings.StartWithWindowsEnabled,
             CaptureDelayMs = Math.Clamp(settings.CaptureDelayMs, 50, 100),
             PopupDurationSeconds = Math.Clamp(settings.PopupDurationSeconds, 2, 60),
             ApiBaseUrl = NormalizeApiBaseUrl(settings.ApiBaseUrl),

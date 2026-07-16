@@ -1,6 +1,8 @@
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
 using Huaci.App.Models;
 using MediaBrush = System.Windows.Media.Brush;
 
@@ -8,18 +10,36 @@ namespace Huaci.App.Views;
 
 public partial class LauncherWindow : Window
 {
+    private const int ModulesPerRow = 4;
+    private const double CompactWidth = 256;
+    private const double HeaderHeight = 38;
+    private const double ModuleRowHeight = 58;
+    private const double ModuleAreaVerticalMargin = 8;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoActivate = 0x0010;
+    private const uint SwpShowWindow = 0x0040;
+    private static readonly nint HwndTopmost = new(-1);
+
     private bool _allowClose;
     private bool _autoCaptureEnabled;
 
     public LauncherWindow()
     {
         InitializeComponent();
+        UpdateCompactSize();
     }
 
     public event Action? HideRequested;
     public event Action<bool>? AutoCaptureChanged;
     public event Action? OpenManualTranslationRequested;
+    public event Action? OpenScreenshotTranslationRequested;
+    public event Action? OpenQuickNotebookRequested;
     public event Action? OpenSettingsRequested;
+
+    public bool ShouldHideFromGlobalToggle =>
+        IsVisible
+        && WindowState != WindowState.Minimized;
 
     public void LoadSettings(AppSettings settings, bool hasApiKey)
     {
@@ -33,8 +53,7 @@ public partial class LauncherWindow : Window
             Top = top;
         }
 
-        Width = 292;
-        Height = 156;
+        UpdateCompactSize();
     }
 
     public void SetAutoCaptureState(bool enabled)
@@ -74,10 +93,44 @@ public partial class LauncherWindow : Window
             WindowState = WindowState.Normal;
         }
 
-        Activate();
+        KeepAboveWithoutActivation();
+        if (!Activate())
+        {
+            nint handle = new WindowInteropHelper(this).Handle;
+            if (handle != nint.Zero)
+            {
+                _ = SetForegroundWindow(handle);
+            }
+        }
+
+        if (IsActive)
+        {
+            Focus();
+        }
+    }
+
+    public void KeepAboveWithoutActivation()
+    {
+        if (!IsVisible || WindowState == WindowState.Minimized)
+        {
+            return;
+        }
+
         Topmost = true;
-        Topmost = PinButton.IsChecked == true;
-        Focus();
+        nint handle = new WindowInteropHelper(this).Handle;
+        if (handle == nint.Zero)
+        {
+            return;
+        }
+
+        _ = SetWindowPos(
+            handle,
+            HwndTopmost,
+            0,
+            0,
+            0,
+            0,
+            SwpNoSize | SwpNoMove | SwpNoActivate | SwpShowWindow);
     }
 
     public void HideToTray()
@@ -115,6 +168,15 @@ public partial class LauncherWindow : Window
         HeaderStatusDot.ToolTip = _autoCaptureEnabled ? "自动划词运行中" : "自动划词已暂停";
     }
 
+    private void UpdateCompactSize()
+    {
+        int rowCount = Math.Max(1, (ModuleGrid.Children.Count + ModulesPerRow - 1) / ModulesPerRow);
+        double compactHeight = HeaderHeight + ModuleAreaVerticalMargin + (rowCount * ModuleRowHeight);
+
+        Width = MinWidth = MaxWidth = CompactWidth;
+        Height = MinHeight = MaxHeight = compactHeight;
+    }
+
     private void Header_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left || e.LeftButton != MouseButtonState.Pressed)
@@ -133,11 +195,6 @@ public partial class LauncherWindow : Window
         }
     }
 
-    private void PinButton_OnChanged(object sender, RoutedEventArgs e)
-    {
-        Topmost = PinButton.IsChecked == true;
-    }
-
     private void HideButton_OnClick(object sender, RoutedEventArgs e)
     {
         HideToTray();
@@ -153,8 +210,33 @@ public partial class LauncherWindow : Window
         OpenManualTranslationRequested?.Invoke();
     }
 
+    private void ScreenshotTranslationModuleButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        OpenScreenshotTranslationRequested?.Invoke();
+    }
+
+    private void QuickNotebookModuleButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        OpenQuickNotebookRequested?.Invoke();
+    }
+
     private void SettingsModuleButton_OnClick(object sender, RoutedEventArgs e)
     {
         OpenSettingsRequested?.Invoke();
     }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(
+        nint window,
+        nint insertAfter,
+        int x,
+        int y,
+        int width,
+        int height,
+        uint flags);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(nint window);
 }

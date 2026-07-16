@@ -20,6 +20,8 @@ public sealed class GlobalMouseHook : IGlobalMouseHook
     private const int SmCyDrag = 69;
     private const int SmCxDoubleClick = 36;
     private const int SmCyDoubleClick = 37;
+    private const int VkControl = 0x11;
+    private const int VkMenu = 0x12;
 
     private readonly object _lifecycleGate = new();
     private readonly GlobalMouseHookOptions _options;
@@ -27,7 +29,7 @@ public sealed class GlobalMouseHook : IGlobalMouseHook
     private readonly int _dragHeight;
     private readonly int _doubleClickHalfWidth;
     private readonly int _doubleClickHalfHeight;
-    private readonly ConcurrentQueue<MouseSelectionTriggerEventArgs> _triggerQueue = new();
+    private readonly ConcurrentQueue<QueuedHookEvent> _triggerQueue = new();
 
     private LowLevelMouseProc? _hookProcedure;
     private Thread? _messageThread;
@@ -38,6 +40,19 @@ public sealed class GlobalMouseHook : IGlobalMouseHook
     private int _isRunning;
     private int _isDisposed;
     private int _triggerDrainScheduled;
+    private int _selectionSuppressionCount;
+    private int _screenshotSuppressionCount;
+    private int _screenshotRequestLatched;
+    private int _screenshotGestureEnabled;
+    private long _nextScreenshotGestureId;
+    private long _publishedScreenshotGestureId;
+    private int _screenshotDragSequence;
+    private int _screenshotDragStartX;
+    private int _screenshotDragStartY;
+    private int _screenshotDragCurrentX;
+    private int _screenshotDragCurrentY;
+    private int _screenshotDragButtonDown;
+    private int _screenshotDragNativeTimestamp;
 
     // The following fields are touched only by the hook message thread.
     private bool _leftButtonDown;
@@ -47,6 +62,7 @@ public sealed class GlobalMouseHook : IGlobalMouseHook
     private ScreenPoint _previousClickPoint;
     private uint _previousClickTime;
     private nint _previousClickWindow;
+    private bool _screenshotChordClickActive;
 
     public GlobalMouseHook(GlobalMouseHookOptions? options = null)
     {
@@ -55,11 +71,81 @@ public sealed class GlobalMouseHook : IGlobalMouseHook
         _dragHeight = Math.Max(1, GetSystemMetrics(SmCyDrag) / 2);
         _doubleClickHalfWidth = Math.Max(1, GetSystemMetrics(SmCxDoubleClick) / 2);
         _doubleClickHalfHeight = Math.Max(1, GetSystemMetrics(SmCyDoubleClick) / 2);
+        _screenshotGestureEnabled = _options.ScreenshotGestureEnabled ? 1 : 0;
     }
 
     public event EventHandler<MouseSelectionTriggerEventArgs>? SelectionTriggered;
 
+    public event EventHandler<ScreenshotRequestedEventArgs>? ScreenshotRequested;
+
     public bool IsRunning => Volatile.Read(ref _isRunning) != 0;
+
+    public bool ScreenshotGestureEnabled
+    {
+        get => Volatile.Read(ref _screenshotGestureEnabled) != 0;
+        set => Volatile.Write(ref _screenshotGestureEnabled, value ? 1 : 0);
+    }
+
+    public IDisposable SuppressSelectionTriggers()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _isDisposed) != 0, this);
+        Interlocked.Increment(ref _selectionSuppressionCount);
+        return new SelectionSuppressionLease(this);
+    }
+
+    public IDisposable SuppressScreenshotRequests()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _isDisposed) != 0, this);
+        Interlocked.Increment(ref _screenshotSuppressionCount);
+        return new ScreenshotSuppressionLease(this);
+    }
+
+    public bool TryGetScreenshotDragState(long gestureId, out ScreenshotDragState state)
+    {
+        state = default;
+        if (gestureId <= 0)
+        {
+            return false;
+        }
+
+        // The hook thread is the only writer. A small sequence lock keeps the
+        // paired X/Y coordinates coherent for readers on the UI thread.
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            var sequenceBefore = Volatile.Read(ref _screenshotDragSequence);
+            if ((sequenceBefore & 1) != 0)
+            {
+                Thread.SpinWait(1);
+                continue;
+            }
+
+            var publishedGestureId = Volatile.Read(ref _publishedScreenshotGestureId);
+            var start = new ScreenPoint(
+                Volatile.Read(ref _screenshotDragStartX),
+                Volatile.Read(ref _screenshotDragStartY));
+            var current = new ScreenPoint(
+                Volatile.Read(ref _screenshotDragCurrentX),
+                Volatile.Read(ref _screenshotDragCurrentY));
+            var isButtonDown = Volatile.Read(ref _screenshotDragButtonDown) != 0;
+            var nativeTimestamp = unchecked((uint)Volatile.Read(ref _screenshotDragNativeTimestamp));
+            var sequenceAfter = Volatile.Read(ref _screenshotDragSequence);
+
+            if (sequenceBefore == sequenceAfter &&
+                (sequenceAfter & 1) == 0 &&
+                publishedGestureId == gestureId)
+            {
+                state = new ScreenshotDragState(
+                    publishedGestureId,
+                    start,
+                    current,
+                    isButtonDown,
+                    nativeTimestamp);
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     public void Start()
     {
@@ -237,7 +323,10 @@ public sealed class GlobalMouseHook : IGlobalMouseHook
                 var data = Marshal.PtrToStructure<MsllHookStruct>(lParam);
                 if (!_options.IgnoreInjectedInput || (data.Flags & LlmhfInjected) == 0)
                 {
-                    ProcessMouseMessage(unchecked((uint)wParam.ToInt64()), data);
+                    if (ProcessMouseMessage(unchecked((uint)wParam.ToInt64()), data))
+                    {
+                        return 1;
+                    }
                 }
             }
         }
@@ -249,16 +338,42 @@ public sealed class GlobalMouseHook : IGlobalMouseHook
         return CallNextHookEx(_hookHandle, code, wParam, lParam);
     }
 
-    private void ProcessMouseMessage(uint message, MsllHookStruct data)
+    private bool ProcessMouseMessage(uint message, MsllHookStruct data)
     {
         var point = new ScreenPoint(data.Point.X, data.Point.Y);
 
         switch (message)
         {
             case WmLButtonDown:
+                if (ScreenshotGestureEnabled &&
+                    ScreenshotRequested is not null &&
+                    Volatile.Read(ref _screenshotSuppressionCount) == 0 &&
+                    IsKeyDown(VkControl) &&
+                    IsKeyDown(VkMenu))
+                {
+                    _screenshotChordClickActive = true;
+                    _leftButtonDown = false;
+                    _dragDetected = false;
+                    _hasPreviousClick = false;
+                    if (Interlocked.CompareExchange(ref _screenshotRequestLatched, 1, 0) == 0)
+                    {
+                        var gestureId = BeginScreenshotDrag(point, data.Time);
+                        QueueScreenshotRequest(new ScreenshotRequestedEventArgs(
+                            point,
+                            data.Time,
+                            gestureId));
+                    }
+
+                    return true;
+                }
+
                 _leftButtonDown = true;
                 _dragDetected = false;
                 _buttonDownPoint = point;
+                break;
+
+            case WmMouseMove when _screenshotChordClickActive:
+                UpdateScreenshotDrag(point, isButtonDown: true, data.Time);
                 break;
 
             case WmMouseMove when _leftButtonDown:
@@ -269,6 +384,11 @@ public sealed class GlobalMouseHook : IGlobalMouseHook
                 }
 
                 break;
+
+            case WmLButtonUp when _screenshotChordClickActive:
+                UpdateScreenshotDrag(point, isButtonDown: false, data.Time);
+                _screenshotChordClickActive = false;
+                return true;
 
             case WmLButtonUp when _leftButtonDown:
                 _leftButtonDown = false;
@@ -303,6 +423,8 @@ public sealed class GlobalMouseHook : IGlobalMouseHook
 
                 break;
         }
+
+        return false;
     }
 
     private bool IsSecondClick(ScreenPoint point, uint timestamp)
@@ -321,12 +443,23 @@ public sealed class GlobalMouseHook : IGlobalMouseHook
 
     private void QueueTrigger(MouseSelectionTriggerEventArgs eventArgs)
     {
-        if (SelectionTriggered is null)
+        if (SelectionTriggered is null || Volatile.Read(ref _selectionSuppressionCount) != 0)
         {
             return;
         }
 
-        _triggerQueue.Enqueue(eventArgs);
+        _triggerQueue.Enqueue(QueuedHookEvent.ForSelection(eventArgs));
+        ScheduleTriggerDrain();
+    }
+
+    private void QueueScreenshotRequest(ScreenshotRequestedEventArgs eventArgs)
+    {
+        if (ScreenshotRequested is null)
+        {
+            return;
+        }
+
+        _triggerQueue.Enqueue(QueuedHookEvent.ForScreenshot(eventArgs));
         ScheduleTriggerDrain();
     }
 
@@ -347,24 +480,19 @@ public sealed class GlobalMouseHook : IGlobalMouseHook
     {
         try
         {
-            while (_triggerQueue.TryDequeue(out var eventArgs))
+            while (_triggerQueue.TryDequeue(out var queuedEvent))
             {
-                var handlers = SelectionTriggered;
-                if (handlers is null)
+                if (queuedEvent.Selection is { } selectionEvent)
                 {
-                    continue;
+                    DispatchSafely(SelectionTriggered, selectionEvent);
                 }
 
-                foreach (EventHandler<MouseSelectionTriggerEventArgs> subscriber in handlers.GetInvocationList())
+                if (queuedEvent.Screenshot is { } screenshotEvent)
                 {
-                    try
+                    DispatchSafely(ScreenshotRequested, screenshotEvent);
+                    if (Volatile.Read(ref _screenshotSuppressionCount) == 0)
                     {
-                        subscriber(this, eventArgs);
-                    }
-                    catch
-                    {
-                        // A client callback must never terminate capture or
-                        // block other subscribers from receiving the trigger.
+                        Volatile.Write(ref _screenshotRequestLatched, 0);
                     }
                 }
             }
@@ -379,6 +507,28 @@ public sealed class GlobalMouseHook : IGlobalMouseHook
         }
     }
 
+    private void DispatchSafely<TEventArgs>(EventHandler<TEventArgs>? handlers, TEventArgs eventArgs)
+        where TEventArgs : EventArgs
+    {
+        if (handlers is null)
+        {
+            return;
+        }
+
+        foreach (EventHandler<TEventArgs> subscriber in handlers.GetInvocationList())
+        {
+            try
+            {
+                subscriber(this, eventArgs);
+            }
+            catch
+            {
+                // A client callback must never terminate capture or block
+                // other subscribers from receiving the trigger.
+            }
+        }
+    }
+
     private void ResetGestureState()
     {
         _leftButtonDown = false;
@@ -388,6 +538,117 @@ public sealed class GlobalMouseHook : IGlobalMouseHook
         _previousClickPoint = default;
         _previousClickTime = 0;
         _previousClickWindow = nint.Zero;
+        _screenshotChordClickActive = false;
+        ClearScreenshotDrag();
+        Volatile.Write(ref _screenshotRequestLatched, 0);
+    }
+
+    private long BeginScreenshotDrag(ScreenPoint point, uint nativeTimestamp)
+    {
+        var gestureId = Interlocked.Increment(ref _nextScreenshotGestureId);
+        Interlocked.Increment(ref _screenshotDragSequence);
+        Volatile.Write(ref _screenshotDragStartX, point.X);
+        Volatile.Write(ref _screenshotDragStartY, point.Y);
+        Volatile.Write(ref _screenshotDragCurrentX, point.X);
+        Volatile.Write(ref _screenshotDragCurrentY, point.Y);
+        Volatile.Write(ref _screenshotDragButtonDown, 1);
+        Volatile.Write(ref _screenshotDragNativeTimestamp, unchecked((int)nativeTimestamp));
+        Volatile.Write(ref _publishedScreenshotGestureId, gestureId);
+        Interlocked.Increment(ref _screenshotDragSequence);
+        return gestureId;
+    }
+
+    private void UpdateScreenshotDrag(
+        ScreenPoint point,
+        bool isButtonDown,
+        uint nativeTimestamp)
+    {
+        if (Volatile.Read(ref _publishedScreenshotGestureId) <= 0)
+        {
+            return;
+        }
+
+        Interlocked.Increment(ref _screenshotDragSequence);
+        Volatile.Write(ref _screenshotDragCurrentX, point.X);
+        Volatile.Write(ref _screenshotDragCurrentY, point.Y);
+        Volatile.Write(ref _screenshotDragButtonDown, isButtonDown ? 1 : 0);
+        Volatile.Write(ref _screenshotDragNativeTimestamp, unchecked((int)nativeTimestamp));
+        Interlocked.Increment(ref _screenshotDragSequence);
+    }
+
+    private void ClearScreenshotDrag()
+    {
+        Interlocked.Increment(ref _screenshotDragSequence);
+        Volatile.Write(ref _publishedScreenshotGestureId, 0);
+        Volatile.Write(ref _screenshotDragButtonDown, 0);
+        Interlocked.Increment(ref _screenshotDragSequence);
+    }
+
+    private void ReleaseSelectionSuppression()
+    {
+        var remaining = Interlocked.Decrement(ref _selectionSuppressionCount);
+        if (remaining < 0)
+        {
+            Interlocked.Exchange(ref _selectionSuppressionCount, 0);
+        }
+    }
+
+    private void ReleaseScreenshotSuppression()
+    {
+        var remaining = Interlocked.Decrement(ref _screenshotSuppressionCount);
+        if (remaining <= 0)
+        {
+            if (remaining < 0)
+            {
+                Interlocked.Exchange(ref _screenshotSuppressionCount, 0);
+            }
+
+            Volatile.Write(ref _screenshotRequestLatched, 0);
+        }
+    }
+
+    private static bool IsKeyDown(int virtualKey) =>
+        (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
+
+    private sealed class SelectionSuppressionLease : IDisposable
+    {
+        private GlobalMouseHook? _owner;
+
+        public SelectionSuppressionLease(GlobalMouseHook owner)
+        {
+            _owner = owner;
+        }
+
+        public void Dispose()
+        {
+            Interlocked.Exchange(ref _owner, null)?.ReleaseSelectionSuppression();
+        }
+    }
+
+    private sealed class ScreenshotSuppressionLease : IDisposable
+    {
+        private GlobalMouseHook? _owner;
+
+        public ScreenshotSuppressionLease(GlobalMouseHook owner)
+        {
+            _owner = owner;
+        }
+
+        public void Dispose()
+        {
+            Interlocked.Exchange(ref _owner, null)?.ReleaseScreenshotSuppression();
+        }
+    }
+
+    private sealed record QueuedHookEvent(
+        MouseSelectionTriggerEventArgs? Selection,
+        ScreenshotRequestedEventArgs? Screenshot)
+    {
+        public static QueuedHookEvent ForSelection(MouseSelectionTriggerEventArgs eventArgs) =>
+            new(eventArgs, null);
+
+        public static QueuedHookEvent ForScreenshot(ScreenshotRequestedEventArgs eventArgs) =>
+            new(null, eventArgs);
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -470,6 +731,9 @@ public sealed class GlobalMouseHook : IGlobalMouseHook
 
     [DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int index);
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int virtualKey);
 
     [DllImport("user32.dll")]
     private static extern nint WindowFromPoint(NativePoint point);

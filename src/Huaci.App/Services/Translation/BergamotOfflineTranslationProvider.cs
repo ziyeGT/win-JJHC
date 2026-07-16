@@ -25,7 +25,10 @@ public sealed class BergamotOfflineTranslationProvider : IOfflineTranslationProv
         "models/en-zh/lex.50.50.enzh.s2t.bin",
         "models/en-zh/model.enzh.intgemm.alphas.bin",
         "models/en-zh/srcvocab.enzh.spm",
-        "models/en-zh/trgvocab.enzh.spm"
+        "models/en-zh/trgvocab.enzh.spm",
+        "models/zh-en/lex.50.50.zhen.s2t.bin",
+        "models/zh-en/model.zhen.intgemm.alphas.bin",
+        "models/zh-en/vocab.zhen.spm"
     ];
 
     private readonly Dispatcher _dispatcher;
@@ -78,18 +81,13 @@ public sealed class BergamotOfflineTranslationProvider : IOfflineTranslationProv
             ? "本地模型已内置，但系统缺少 Microsoft Edge WebView2 Runtime，请安装后重启 Huaci。"
             : _disposed
                 ? "内置离线翻译引擎已关闭，请重启 Huaci。"
-                : "内置英语→简体中文模型已就绪";
+                : "内置英语↔简体中文模型已就绪";
 
     public bool Supports(TranslationRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        string source = NormalizeLanguage(request.SourceLanguage);
-        string target = NormalizeLanguage(request.TargetLanguage);
-        bool sourceSupported = source is "auto" or "en" || source.StartsWith("en-", StringComparison.Ordinal);
-        bool targetSupported = target is "zh" or "zh-cn" or "zh-hans";
-        return sourceSupported
-            && targetSupported
+        return TryResolveLanguagePair(request, out _, out _)
             && request.Text.Length is > 0 and <= MaximumTextLength;
     }
 
@@ -133,8 +131,10 @@ public sealed class BergamotOfflineTranslationProvider : IOfflineTranslationProv
         {
             throw new TranslationProviderException(
                 TranslationErrorKind.Configuration,
-                "当前内置离线模型仅支持英语翻译为简体中文。" );
+                "当前内置离线模型仅支持英语与简体中文互译。" );
         }
+
+        _ = TryResolveLanguagePair(request, out string sourceLanguage, out string targetLanguage);
 
         Task initialization = GetInitializationTask();
         await initialization.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -159,7 +159,9 @@ public sealed class BergamotOfflineTranslationProvider : IOfflineTranslationProv
                 v = 1,
                 type = "translate",
                 id = requestId,
-                text = sourceText
+                text = sourceText,
+                from = sourceLanguage,
+                to = targetLanguage
             });
 
             await InvokeOnDispatcherAsync(
@@ -186,7 +188,7 @@ public sealed class BergamotOfflineTranslationProvider : IOfflineTranslationProv
             return new TranslationResult(
                 sourceText,
                 translatedText.Trim(),
-                "en",
+                sourceLanguage,
                 TranslationOrigin.Offline);
         }
         finally
@@ -505,6 +507,46 @@ public sealed class BergamotOfflineTranslationProvider : IOfflineTranslationProv
 
     private static string NormalizeLanguage(string? value) =>
         (value ?? string.Empty).Trim().Replace('_', '-').ToLowerInvariant();
+
+    private static bool TryResolveLanguagePair(
+        TranslationRequest request,
+        out string sourceLanguage,
+        out string targetLanguage)
+    {
+        string source = NormalizeLanguage(request.SourceLanguage);
+        string target = NormalizeLanguage(request.TargetLanguage);
+
+        bool targetIsEnglish = IsEnglish(target);
+        bool targetIsChinese = IsSimplifiedChinese(target);
+        bool sourceIsAuto = source is "" or "auto";
+        bool sourceIsEnglish = IsEnglish(source);
+        bool sourceIsChinese = IsSimplifiedChinese(source);
+
+        if ((sourceIsEnglish || sourceIsAuto) && targetIsChinese)
+        {
+            sourceLanguage = "en";
+            targetLanguage = "zh";
+            return true;
+        }
+
+        if ((sourceIsChinese || sourceIsAuto) && targetIsEnglish)
+        {
+            sourceLanguage = "zh";
+            targetLanguage = "en";
+            return true;
+        }
+
+        sourceLanguage = string.Empty;
+        targetLanguage = string.Empty;
+        return false;
+    }
+
+    private static bool IsEnglish(string language) =>
+        language == "en" || language.StartsWith("en-", StringComparison.Ordinal);
+
+    private static bool IsSimplifiedChinese(string language) =>
+        language is "zh" or "zh-cn" or "zh-hans"
+        || language.StartsWith("zh-hans-", StringComparison.Ordinal);
 
     private static bool IsTrustedEngineSource(string? value) =>
         Uri.TryCreate(value, UriKind.Absolute, out Uri? source)

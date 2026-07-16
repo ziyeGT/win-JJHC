@@ -9,6 +9,10 @@ public sealed class AppSettings
 
     public bool ClipboardFallbackEnabled { get; set; }
 
+    public bool ScreenshotTranslationEnabled { get; set; } = true;
+
+    public bool StartWithWindowsEnabled { get; set; }
+
     public int CaptureDelayMs { get; set; } = 60;
 
     public int PopupDurationSeconds { get; set; } = 5;

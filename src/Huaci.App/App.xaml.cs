@@ -1,5 +1,6 @@
 using System.Threading;
 using Huaci.App.Infrastructure;
+using Huaci.App.Services.Settings;
 
 namespace Huaci.App;
 
@@ -17,9 +18,17 @@ public partial class App : System.Windows.Application
     {
         base.OnStartup(e);
 
+        var isStartupLaunch = WindowsStartupService.IsStartupLaunch(e.Args);
+
         _singleInstanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var isFirstInstance);
         if (!isFirstInstance)
         {
+            if (isStartupLaunch)
+            {
+                Shutdown();
+                return;
+            }
+
             try
             {
                 using var activationEvent = EventWaitHandle.OpenExisting(ActivationEventName);

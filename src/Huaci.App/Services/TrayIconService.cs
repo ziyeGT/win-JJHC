@@ -20,11 +20,18 @@ public sealed class TrayIconService : IDisposable
             CheckOnClick = true
         };
 
-        var openItem = new System.Windows.Forms.ToolStripMenuItem("打开主窗口");
+        var openItem = new System.Windows.Forms.ToolStripMenuItem("打开主窗口")
+        {
+            ShortcutKeyDisplayString = GlobalHotKeyService.ToggleMainWindowDisplayText
+        };
+        var screenshotItem = new System.Windows.Forms.ToolStripMenuItem("截图翻译");
+        var quickNotebookItem = new System.Windows.Forms.ToolStripMenuItem("快速笔记");
         var settingsItem = new System.Windows.Forms.ToolStripMenuItem("设置");
         var exitItem = new System.Windows.Forms.ToolStripMenuItem("退出");
 
         openItem.Click += (_, _) => OpenRequested?.Invoke();
+        screenshotItem.Click += (_, _) => ScreenshotTranslationRequested?.Invoke();
+        quickNotebookItem.Click += (_, _) => QuickNotebookRequested?.Invoke();
         settingsItem.Click += (_, _) => SettingsRequested?.Invoke();
         exitItem.Click += (_, _) => ExitRequested?.Invoke();
         _autoCaptureItem.CheckedChanged += (_, _) =>
@@ -37,6 +44,8 @@ public sealed class TrayIconService : IDisposable
 
         var menu = new System.Windows.Forms.ContextMenuStrip();
         menu.Items.Add(openItem);
+        menu.Items.Add(screenshotItem);
+        menu.Items.Add(quickNotebookItem);
         menu.Items.Add(settingsItem);
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         menu.Items.Add(_autoCaptureItem);
@@ -55,6 +64,8 @@ public sealed class TrayIconService : IDisposable
 
     public event Action? OpenRequested;
     public event Action? ToggleWindowRequested;
+    public event Action? ScreenshotTranslationRequested;
+    public event Action? QuickNotebookRequested;
     public event Action? SettingsRequested;
     public event Action<bool>? AutoCaptureChanged;
     public event Action? ExitRequested;
@@ -99,11 +110,52 @@ public sealed class TrayIconService : IDisposable
 
     private static Icon CreateIcon()
     {
+        try
+        {
+            var iconResource = System.Windows.Application.GetResourceStream(
+                new Uri("pack://application:,,,/Assets/Huaci.ico", UriKind.Absolute));
+            if (iconResource is not null)
+            {
+                using (iconResource.Stream)
+                using (var embeddedIcon = new Icon(iconResource.Stream))
+                {
+                    return (Icon)embeddedIcon.Clone();
+                }
+            }
+
+            string? executablePath = Environment.ProcessPath;
+            if (!string.IsNullOrWhiteSpace(executablePath) && File.Exists(executablePath))
+            {
+                using Icon? applicationIcon = Icon.ExtractAssociatedIcon(executablePath);
+                if (applicationIcon is not null)
+                {
+                    return (Icon)applicationIcon.Clone();
+                }
+            }
+        }
+        catch (ArgumentException)
+        {
+            // Fall back to the runtime-drawn icon when the PE icon is unavailable.
+        }
+        catch (ExternalException)
+        {
+            // Fall back to the runtime-drawn icon when resource loading or shell extraction fails.
+        }
+        catch (IOException)
+        {
+            // Fall back to the runtime-drawn icon when the resource stream cannot be read.
+        }
+
+        return CreateFallbackIcon();
+    }
+
+    private static Icon CreateFallbackIcon()
+    {
         using var bitmap = new Bitmap(32, 32, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         using var graphics = Graphics.FromImage(bitmap);
         graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
         graphics.Clear(Color.Transparent);
-        using var background = new SolidBrush(Color.FromArgb(79, 107, 237));
+        using var background = new SolidBrush(Color.FromArgb(64, 93, 222));
         graphics.FillRoundedRectangle(background, new Rectangle(1, 1, 30, 30), 7);
         using var font = new Font("Microsoft YaHei UI", 15, FontStyle.Bold, GraphicsUnit.Pixel);
         using var foreground = new SolidBrush(Color.White);

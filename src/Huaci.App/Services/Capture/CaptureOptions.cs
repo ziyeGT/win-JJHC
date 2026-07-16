@@ -6,6 +6,8 @@ public sealed class GlobalMouseHookOptions
     /// If true, mouse messages tagged as injected by Windows are ignored.
     /// </summary>
     public bool IgnoreInjectedInput { get; init; } = true;
+
+    public bool ScreenshotGestureEnabled { get; init; } = true;
 }
 
 public sealed class TextSelectionOptions

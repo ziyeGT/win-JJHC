@@ -1,0 +1,139 @@
+<Window x:Class="Huaci.App.Views.ScreenshotTranslationOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" ResizeMode="NoResize"
+        ShowInTaskbar="False" ShowActivated="False" Topmost="True"
+        AllowsTransparency="True" Background="Transparent"
+        SnapsToDevicePixels="True" UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display">
+    <Window.Resources>
+        <Style x:Key="OverlayButtonStyle" TargetType="{x:Type Button}">
+            <Setter Property="Width" Value="25" />
+            <Setter Property="Height" Value="25" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="Chrome" Background="{TemplateBinding Background}"
+                                CornerRadius="5">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#32FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#52FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.32" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="{x:Type ScrollBar}">
+            <Setter Property="Width" Value="6" />
+            <Setter Property="MinWidth" Value="6" />
+        </Style>
+    </Window.Resources>
+
+    <Grid x:Name="RootGrid" Background="Transparent">
+        <!-- The original pixels stay in memory only while this persistent
+             selection is visible. 译文 uses an opaque reading canvas above it;
+             原文 reveals this frozen image again. -->
+        <Image x:Name="FrozenBackgroundImage" Stretch="Fill"
+               SnapsToDevicePixels="True" IsHitTestVisible="False" />
+
+        <Border x:Name="ReplacementSurface" Margin="3"
+                Background="#FFF7F7F7" Visibility="Collapsed"
+                IsHitTestVisible="False" />
+
+        <ScrollViewer x:Name="ResultScrollViewer"
+                      Margin="12" Visibility="Collapsed"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto"
+                      PanningMode="VerticalOnly" Focusable="False">
+            <TextBlock x:Name="ResultTextBlock" TextWrapping="Wrap"
+                       FontFamily="Microsoft YaHei UI" FontSize="16"
+                       LineHeight="25" TextAlignment="Left"
+                       Foreground="#FF34363B"
+                       AutomationProperties.Name="截图翻译结果"
+                       AutomationProperties.LiveSetting="Polite" />
+        </ScrollViewer>
+
+        <Border x:Name="LoadingCard"
+                Margin="8" Padding="10,8"
+                VerticalAlignment="Center" HorizontalAlignment="Center"
+                Background="#E6373A42" CornerRadius="7">
+            <StackPanel x:Name="LoadingPanel" Orientation="Horizontal">
+                <ProgressBar x:Name="LoadingProgressBar" Width="45" Height="3"
+                             IsIndeterminate="True" VerticalAlignment="Center" />
+                <TextBlock x:Name="LoadingTextBlock" Margin="8,0,0,0"
+                           Text="正在识别…" Foreground="#E6FFFFFF"
+                           FontSize="11" VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        <!-- A compact floating toolbar keeps the reconstructed page visually
+             dominant. It intentionally does not stretch across the selection. -->
+        <Border x:Name="ContentCard"
+                Margin="6" Padding="3"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                Background="#D9282B31" BorderThickness="1"
+                BorderBrush="#2FFFFFFF" CornerRadius="7" Opacity="0.82">
+            <StackPanel x:Name="HeaderPanel" Orientation="Horizontal">
+                <Border x:Name="OriginBadge" Margin="3,0,2,0" Padding="5,1"
+                        VerticalAlignment="Center" Background="#24FFFFFF"
+                        CornerRadius="4" Visibility="Collapsed">
+                    <TextBlock x:Name="OriginTextBlock" FontSize="8.5"
+                               Foreground="#E6FFFFFF" />
+                </Border>
+                <TextBlock x:Name="StatusTextBlock" Margin="4,0,3,0"
+                           VerticalAlignment="Center" Foreground="#BFFFFFFF"
+                           FontSize="9.5" Visibility="Collapsed" />
+                <Button x:Name="ViewToggleButton"
+                        Style="{StaticResource OverlayButtonStyle}"
+                        Width="40" Content="原文" Visibility="Collapsed"
+                        ToolTip="查看原截图"
+                        AutomationProperties.Name="切换原文和译文"
+                        Click="ViewToggleButton_OnClick" />
+                <Button x:Name="CopyButton" Style="{StaticResource OverlayButtonStyle}"
+                        Margin="1,0,0,0" IsEnabled="False"
+                        ToolTip="复制译文"
+                        AutomationProperties.Name="复制截图译文"
+                        Click="CopyButton_OnClick">
+                    <Viewbox Width="12" Height="12">
+                        <Path Fill="White" Data="M6,2 H18 A2,2 0 0 1 20,4 V16 H18 V4 H6 Z M4,6 H15 A2,2 0 0 1 17,8 V19 A2,2 0 0 1 15,21 H4 A2,2 0 0 1 2,19 V8 A2,2 0 0 1 4,6 M4,8 V19 H15 V8 Z" />
+                    </Viewbox>
+                </Button>
+                <Button x:Name="CloseButton" Style="{StaticResource OverlayButtonStyle}"
+                        Margin="1,0,0,0" ToolTip="关闭截图翻译"
+                        AutomationProperties.Name="关闭截图翻译"
+                        Click="CloseButton_OnClick">
+                    <Viewbox Width="11" Height="11">
+                        <Path Fill="White" Data="M3,2 L10,9 L17,2 L19,4 L12,11 L19,18 L17,20 L10,13 L3,20 L1,18 L8,11 L1,4 Z" />
+                    </Viewbox>
+                </Button>
+            </StackPanel>
+        </Border>
+
+        <!-- The outline is drawn last so it remains visible in both views. -->
+        <Border x:Name="SelectionShadowBorder"
+                BorderBrush="#DB080C18" BorderThickness="4"
+                IsHitTestVisible="False" />
+        <Border x:Name="SelectionBorder"
+                BorderBrush="#FF7AA2FF" BorderThickness="2"
+                IsHitTestVisible="False" />
+    </Grid>
+</Window>

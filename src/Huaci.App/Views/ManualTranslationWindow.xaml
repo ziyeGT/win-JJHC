@@ -2,9 +2,9 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Huaci 手动翻译"
-        Width="360" Height="402"
-        MinWidth="360" MinHeight="402"
-        MaxWidth="360" MaxHeight="402"
+        Width="336" Height="376"
+        MinWidth="336" MinHeight="376"
+        MaxWidth="336" MaxHeight="376"
         WindowStyle="None"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
@@ -28,32 +28,33 @@
             CornerRadius="11">
         <Grid ClipToBounds="True">
             <Grid.RowDefinitions>
-                <RowDefinition Height="42" />
+                <RowDefinition Height="38" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="25" />
+                <RowDefinition Height="23" />
             </Grid.RowDefinitions>
 
             <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="34" />
+                    <ColumnDefinition Width="32" />
                 </Grid.ColumnDefinitions>
                 <Border x:Name="HeaderDragArea"
                         Grid.Column="0"
                         Background="Transparent"
                         MouseLeftButtonDown="Header_OnMouseLeftButtonDown">
-                    <StackPanel Margin="12,0,0,0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <StackPanel Margin="10,0,0,0" Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="&#xE774;"
                                    FontFamily="{StaticResource IconFont}"
-                                   FontSize="15"
+                                   FontSize="14"
                                    Foreground="{StaticResource TextSecondaryBrush}" />
                         <TextBlock Margin="8,0,0,0"
                                    Text="手动翻译"
-                                   FontSize="13.5"
+                                   FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimaryBrush}" />
                         <TextBlock Margin="7,1,0,0"
-                                   Text="自动识别语言"
+                                   x:Name="DirectionSummaryTextBlock"
+                                   Text="英语 → 简体中文"
                                    FontSize="9.5"
                                    Foreground="{StaticResource TextWeakBrush}" />
                     </StackPanel>
@@ -68,17 +69,62 @@
                 </Button>
             </Grid>
 
-            <Grid Grid.Row="1" Margin="11,2,11,10">
+            <Grid Grid.Row="1" Margin="10,2,10,8">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="82" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="64" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="40" />
+                    <RowDefinition Height="38" />
                 </Grid.RowDefinitions>
 
-                <DockPanel Grid.Row="0" Margin="1,0,1,5" LastChildFill="False">
-                    <TextBlock Text="原文"
+                <Border Grid.Row="0"
+                        Height="32"
+                        Margin="0,0,0,7"
+                        Padding="10,0"
+                        Background="{StaticResource FieldBrush}"
+                        BorderBrush="{StaticResource MainBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="40" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="SourceLanguageTextBlock"
+                                   Text="英语"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontSize="10.5"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                        <Button x:Name="DirectionButton"
+                                Grid.Column="1"
+                                Width="30"
+                                Height="24"
+                                MinHeight="24"
+                                Padding="0"
+                                Content="⇄"
+                                FontSize="15"
+                                ToolTip="切换为中译英"
+                                AutomationProperties.Name="切换为中译英"
+                                Click="DirectionButton_OnClick" />
+                        <TextBlock x:Name="TargetLanguageTextBlock"
+                                   Grid.Column="2"
+                                   Text="简体中文"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontSize="10.5"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                    </Grid>
+                </Border>
+
+                <DockPanel Grid.Row="1" Margin="1,0,1,5" LastChildFill="False">
+                    <TextBlock x:Name="SourceLabelTextBlock"
+                               Text="英语原文"
                                FontSize="10.5"
                                FontWeight="SemiBold"
                                Foreground="{StaticResource TextPrimaryBrush}" />
@@ -88,15 +134,16 @@
                                Foreground="{StaticResource TextWeakBrush}" />
                 </DockPanel>
                 <TextBox x:Name="SourceTextBox"
-                         Grid.Row="1"
+                         Grid.Row="2"
                          Height="Auto"
                          AcceptsReturn="True"
                          TextWrapping="Wrap"
                          VerticalScrollBarVisibility="Auto"
                          AutomationProperties.Name="原文" />
 
-                <DockPanel Grid.Row="2" Margin="1,10,1,5" LastChildFill="False">
-                    <TextBlock Text="简体中文"
+                <DockPanel Grid.Row="3" Margin="1,10,1,5" LastChildFill="False">
+                    <TextBlock x:Name="ResultLabelTextBlock"
+                               Text="简体中文译文"
                                FontSize="10.5"
                                FontWeight="SemiBold"
                                Foreground="{StaticResource TextPrimaryBrush}" />
@@ -110,17 +157,17 @@
                             Click="CopyButton_OnClick" />
                 </DockPanel>
                 <TextBox x:Name="ResultTextBox"
-                         Grid.Row="3"
+                         Grid.Row="4"
                          Height="Auto"
-                         MinHeight="104"
+                         MinHeight="74"
                          AcceptsReturn="True"
                          TextWrapping="Wrap"
                          IsReadOnly="True"
                          VerticalScrollBarVisibility="Auto"
                          AutomationProperties.Name="简体中文译文" />
 
-                <StackPanel Grid.Row="4"
-                            Margin="0,10,0,0"
+                <StackPanel Grid.Row="5"
+                            Margin="0,8,0,0"
                             Orientation="Horizontal"
                             HorizontalAlignment="Right">
                     <Button x:Name="ClearButton"

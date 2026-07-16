@@ -30,8 +30,9 @@ public partial class SettingsWindow : Window
     {
         _hasApiKey = hasApiKey;
         _offlineAvailable = offlineAvailable;
-        AutoCaptureCheckBox.IsChecked = settings.AutoCaptureEnabled;
         ClipboardFallbackCheckBox.IsChecked = settings.ClipboardFallbackEnabled;
+        StartWithWindowsCheckBox.IsChecked = settings.StartWithWindowsEnabled;
+        ScreenshotTranslationCheckBox.IsChecked = settings.ScreenshotTranslationEnabled;
         CaptureDelayTextBox.Text = settings.CaptureDelayMs.ToString();
         PopupDurationTextBox.Text = settings.PopupDurationSeconds.ToString();
         ApiBaseUrlTextBox.Text = settings.ApiBaseUrl;
@@ -50,8 +51,17 @@ public partial class SettingsWindow : Window
 
     public void SetAutoCaptureState(bool enabled)
     {
-        AutoCaptureCheckBox.IsChecked = enabled;
         UpdateCaptureState(enabled);
+    }
+
+    public void SetStartWithWindowsState(bool enabled)
+    {
+        StartWithWindowsCheckBox.IsChecked = enabled;
+    }
+
+    public void SetScreenshotTranslationState(bool enabled)
+    {
+        ScreenshotTranslationCheckBox.IsChecked = enabled;
     }
 
     public void SetServiceConfigured(bool configured)
@@ -99,7 +109,7 @@ public partial class SettingsWindow : Window
                 else
                 {
                     SettingsScrollViewer.ScrollToTop();
-                    AutoCaptureCheckBox.Focus();
+                    ClipboardFallbackCheckBox.Focus();
                 }
             }));
     }
@@ -169,8 +179,9 @@ public partial class SettingsWindow : Window
 
         var input = new SettingsWindowInput
         {
-            AutoCaptureEnabled = AutoCaptureCheckBox.IsChecked == true,
             ClipboardFallbackEnabled = ClipboardFallbackCheckBox.IsChecked == true,
+            StartWithWindowsEnabled = StartWithWindowsCheckBox.IsChecked == true,
+            ScreenshotTranslationEnabled = ScreenshotTranslationCheckBox.IsChecked == true,
             CaptureDelayMs = Math.Clamp(delay, 50, 100),
             PopupDurationSeconds = Math.Clamp(duration, 2, 60),
             TranslationMode = TranslationModeComboBox.SelectedIndex switch
@@ -200,22 +211,23 @@ public partial class SettingsWindow : Window
         ServiceStateDot.Fill = (MediaBrush)FindResource(configured ? "SuccessBrush" : "WarningBrush");
         ApiKeyHintTextBlock.Text = configured
             ? "已安全保存密钥；留空表示继续使用现有密钥"
-            : "尚未配置；离线英译中不需要密钥";
+            : "尚未配置；离线中英互译不需要密钥";
     }
 
     private void UpdateOfflineState(bool available, string? message = null)
     {
         OfflineStateDot.Fill = (MediaBrush)FindResource(available ? "SuccessBrush" : "WarningBrush");
         OfflineStateTextBlock.Text = message ?? (available
-            ? "内置英语 → 简体中文模型已就绪，可断网使用"
+            ? "内置英语 ↔ 简体中文模型已就绪，可断网使用"
             : "内置模型暂时不可用，请检查完整 ZIP 与 WebView2 运行库");
     }
 }
 
 public sealed class SettingsWindowInput
 {
-    public bool AutoCaptureEnabled { get; init; }
     public bool ClipboardFallbackEnabled { get; init; }
+    public bool StartWithWindowsEnabled { get; init; }
+    public bool ScreenshotTranslationEnabled { get; init; }
     public int CaptureDelayMs { get; init; }
     public int PopupDurationSeconds { get; init; }
     public TranslationRouteMode TranslationMode { get; init; }

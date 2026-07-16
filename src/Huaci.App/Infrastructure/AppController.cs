@@ -1,8 +1,12 @@
+using System.Globalization;
+using System.Text;
 using System.Windows;
 using System.Windows.Threading;
 using Huaci.App.Models;
 using Huaci.App.Services;
 using Huaci.App.Services.Capture;
+using Huaci.App.Services.Notebook;
+using Huaci.App.Services.Ocr;
 using Huaci.App.Services.Settings;
 using Huaci.App.Services.Translation;
 using Huaci.App.Views;
@@ -13,23 +17,34 @@ public sealed class AppController : IDisposable
 {
     private readonly System.Windows.Application _application;
     private readonly SettingsService _settingsService;
+    private readonly WindowsStartupService _startupService;
     private readonly CredentialManagerSecretStore _secretStore;
     private readonly BergamotOfflineTranslationProvider _offlineTranslationProvider;
     private readonly OpenAiCompatibleTranslationProvider _onlineTranslationProvider;
     private readonly ITranslationService _translationService;
     private readonly GlobalMouseHook _mouseHook;
+    private readonly IScreenRegionCaptureService _screenRegionCapture;
+    private readonly IOcrService _ocrService;
     private readonly TextSelectionService _textSelection;
     private readonly ClipboardFallbackService _clipboardFallback;
     private readonly LauncherWindow _mainWindow;
     private readonly SettingsWindow _settingsWindow;
     private readonly ManualTranslationWindow _manualTranslationWindow;
+    private readonly QuickNotebookService _quickNotebookService;
+    private readonly QuickNotebookWindow _quickNotebookWindow;
+    private readonly AlarmBannerWindow _alarmBannerWindow;
+    private readonly QuickNotebookAlarmCoordinator _alarmCoordinator;
     private readonly TranslationPopupWindow _popup;
+    private readonly ScreenshotTranslationOverlayWindow _screenshotOverlay;
     private readonly TrayIconService _tray;
+    private readonly GlobalHotKeyService _globalHotKey;
     private readonly SelectionTranslationCoordinator _coordinator;
     private readonly DispatcherTimer _placementSaveTimer;
 
     private AppSettings _settings;
     private CancellationTokenSource? _manualTranslation;
+    private readonly object _screenshotRequestGate = new();
+    private CancellationTokenSource? _screenshotTranslation;
     private bool _initialized;
     private bool _disposed;
 
@@ -37,6 +52,7 @@ public sealed class AppController : IDisposable
     {
         _application = application;
         _settingsService = new SettingsService();
+        _startupService = new WindowsStartupService();
         _secretStore = new CredentialManagerSecretStore();
         _offlineTranslationProvider = new BergamotOfflineTranslationProvider(_application.Dispatcher);
         _onlineTranslationProvider = new OpenAiCompatibleTranslationProvider();
@@ -49,8 +65,17 @@ public sealed class AppController : IDisposable
         _mainWindow = new LauncherWindow();
         _settingsWindow = new SettingsWindow();
         _manualTranslationWindow = new ManualTranslationWindow();
+        _quickNotebookService = new QuickNotebookService();
+        _quickNotebookWindow = new QuickNotebookWindow(_quickNotebookService);
+        _alarmBannerWindow = new AlarmBannerWindow();
+        _alarmCoordinator = new QuickNotebookAlarmCoordinator(
+            _quickNotebookService,
+            _alarmBannerWindow,
+            _application.Dispatcher);
         _application.MainWindow = _mainWindow;
         _popup = new TranslationPopupWindow();
+        _screenshotOverlay = new ScreenshotTranslationOverlayWindow();
+        _globalHotKey = new GlobalHotKeyService(_mainWindow);
         var hasApiKey = HasApiKey();
         _mainWindow.LoadSettings(_settings, IsTranslationReady(_settings, hasApiKey));
         _settingsWindow.LoadSettings(_settings, hasApiKey, _offlineTranslationProvider.IsAvailable);
@@ -59,6 +84,11 @@ public sealed class AppController : IDisposable
             _offlineTranslationProvider.AvailabilityMessage);
 
         _mouseHook = new GlobalMouseHook();
+        _screenRegionCapture = new ScreenRegionCaptureService(
+            _mouseHook,
+            dispatcher: _application.Dispatcher,
+            captureSurfaceReady: _mainWindow.KeepAboveWithoutActivation);
+        _ocrService = new RapidOcrService();
         _textSelection = new TextSelectionService();
         _clipboardFallback = new ClipboardFallbackService(new ClipboardFallbackOptions
         {
@@ -91,16 +121,40 @@ public sealed class AppController : IDisposable
         }
 
         _initialized = true;
-        var requestedCaptureState = _settings.AutoCaptureEnabled;
-        var effectiveCaptureState = ApplyCaptureState(requestedCaptureState);
-        if (effectiveCaptureState != requestedCaptureState)
+        var hotKeyRegistered = _globalHotKey.TryRegister();
+        if (!_settings.AutoCaptureEnabled)
         {
-            var rolledBack = CopySettings(GetSettings());
-            rolledBack.AutoCaptureEnabled = effectiveCaptureState;
-            SetAndSaveSettings(rolledBack);
+            var enabledAtStartup = CopySettings(GetSettings());
+            enabledAtStartup.AutoCaptureEnabled = true;
+            try
+            {
+                SetAndSaveSettings(enabledAtStartup);
+            }
+            catch
+            {
+                // Starting with automatic selection enabled is the runtime
+                // default even when the settings file is temporarily locked.
+                Volatile.Write(
+                    ref _settings,
+                    SettingsService.ValidateAndNormalize(enabledAtStartup));
+            }
         }
 
-        PublishAutoCaptureState(effectiveCaptureState);
+        var requestedCaptureState = _settings.AutoCaptureEnabled;
+        var requestedScreenshotState = _settings.ScreenshotTranslationEnabled;
+        var effectiveCaptureState = ApplyCaptureState(requestedCaptureState);
+        if (effectiveCaptureState.AutoCaptureEnabled != requestedCaptureState
+            || effectiveCaptureState.ScreenshotTranslationEnabled != requestedScreenshotState)
+        {
+            var rolledBack = CopySettings(GetSettings());
+            rolledBack.AutoCaptureEnabled = effectiveCaptureState.AutoCaptureEnabled;
+            rolledBack.ScreenshotTranslationEnabled = effectiveCaptureState.ScreenshotTranslationEnabled;
+            SetAndSaveSettings(rolledBack);
+            _settingsWindow.SetScreenshotTranslationState(
+                effectiveCaptureState.ScreenshotTranslationEnabled);
+        }
+
+        PublishAutoCaptureState(effectiveCaptureState.AutoCaptureEnabled);
 
         var hasApiKey = HasApiKey();
         if (!IsTranslationReady(_settings, hasApiKey))
@@ -115,10 +169,58 @@ public sealed class AppController : IDisposable
                  && _offlineTranslationProvider.IsAvailable)
         {
             _mainWindow.SetStatus("离线翻译已就绪");
-            _settingsWindow.SetStatus("内置英译中可断网使用");
+            _settingsWindow.SetStatus("内置英中互译可断网使用");
+        }
+
+        if (effectiveCaptureState.HookStartFailed)
+        {
+            const string message = "无法启动全局鼠标监听；自动划词和截图手势已关闭";
+            _mainWindow.SetStatus(message, true);
+            _settingsWindow.SetStatus(message, true);
+        }
+
+        var startupRegistrationFailed = false;
+        try
+        {
+            _startupService.SetEnabled(_settings.StartWithWindowsEnabled);
+        }
+        catch (StartupRegistrationException)
+        {
+            startupRegistrationFailed = true;
+            if (_settings.StartWithWindowsEnabled)
+            {
+                try
+                {
+                    var rolledBack = CopySettings(GetSettings());
+                    rolledBack.StartWithWindowsEnabled = false;
+                    SetAndSaveSettings(rolledBack);
+                }
+                catch
+                {
+                    // Startup registration must never prevent the app itself
+                    // from starting, even if the settings file is also locked.
+                }
+
+                _settingsWindow.SetStartWithWindowsState(false);
+            }
+        }
+
+        if (startupRegistrationFailed)
+        {
+            _settingsWindow.SetStatus("开机自动启动注册失败，已保持关闭", true);
         }
 
         ShowMainWindow();
+        _alarmCoordinator.Start();
+        if (!hotKeyRegistered)
+        {
+            string errorSuffix = _globalHotKey.LastRegistrationError == 0
+                ? string.Empty
+                : $"（Windows 错误 {_globalHotKey.LastRegistrationError}）";
+            _mainWindow.SetStatus(
+                $"Ctrl+F1 暂时不可用{errorSuffix}，正在自动重试；也可通过托盘打开。",
+                true);
+        }
         if (_settings.TranslationMode != TranslationRouteMode.OnlineOnly
             && _offlineTranslationProvider.IsAvailable)
         {
@@ -149,13 +251,26 @@ public sealed class AppController : IDisposable
         _manualTranslation?.Dispose();
         _manualTranslation = null;
 
+        CancelScreenshotTranslation(hidePopup: false);
+
         _coordinator.Dispose();
+        _alarmCoordinator.Dispose();
+        _globalHotKey.ToggleMainWindowRequested -= ToggleMainWindow;
+        _globalHotKey.RegistrationRecovered -= GlobalHotKey_OnRegistrationRecovered;
+        _globalHotKey.Dispose();
+        _mouseHook.ScreenshotRequested -= MouseHook_OnScreenshotRequested;
+        _screenshotOverlay.Dismissed -= ScreenshotOverlay_OnDismissed;
+        _screenRegionCapture.Dispose();
+        _ocrService.Dispose();
         _mouseHook.Stop();
         _mouseHook.Dispose();
         _textSelection.Dispose();
         _clipboardFallback.Dispose();
         _popup.CloseForExit();
+        _screenshotOverlay.CloseForExit();
+        _alarmBannerWindow.CloseForExit();
         _manualTranslationWindow.CloseForExit();
+        _quickNotebookWindow.CloseForExit();
         _settingsWindow.CloseForExit();
         _mainWindow.CloseForExit();
         _tray.Dispose();
@@ -170,23 +285,31 @@ public sealed class AppController : IDisposable
     {
         _tray.OpenRequested += ShowMainWindow;
         _tray.ToggleWindowRequested += ToggleMainWindow;
+        _tray.ScreenshotTranslationRequested += StartScreenshotTranslation;
+        _tray.QuickNotebookRequested += ShowQuickNotebook;
         _tray.SettingsRequested += ShowSettings;
         _tray.AutoCaptureChanged += SetAutoCapture;
         _tray.ExitRequested += RequestExit;
+        _globalHotKey.ToggleMainWindowRequested += ToggleMainWindow;
+        _globalHotKey.RegistrationRecovered += GlobalHotKey_OnRegistrationRecovered;
 
         _mainWindow.HideRequested += MainWindow_OnHidden;
         _mainWindow.AutoCaptureChanged += SetAutoCapture;
         _mainWindow.OpenManualTranslationRequested += ShowManualTranslation;
+        _mainWindow.OpenScreenshotTranslationRequested += StartScreenshotTranslation;
+        _mainWindow.OpenQuickNotebookRequested += ShowQuickNotebook;
         _mainWindow.OpenSettingsRequested += ShowSettings;
         _settingsWindow.SaveSettingsRequested += SaveSettings;
         _manualTranslationWindow.TranslateRequested += text => _ = TranslateManuallyAsync(text);
         _mainWindow.LocationChanged += (_, _) => SchedulePlacementSave();
         _mainWindow.SizeChanged += (_, _) => SchedulePlacementSave();
+        _mouseHook.ScreenshotRequested += MouseHook_OnScreenshotRequested;
+        _screenshotOverlay.Dismissed += ScreenshotOverlay_OnDismissed;
     }
 
     private void ToggleMainWindow()
     {
-        if (_mainWindow.IsVisible && _mainWindow.WindowState != WindowState.Minimized)
+        if (_mainWindow.ShouldHideFromGlobalToggle)
         {
             _mainWindow.HideToTray();
             return;
@@ -199,6 +322,13 @@ public sealed class AppController : IDisposable
     {
         EnsureMainWindowVisible();
         _mainWindow.ShowAndActivate();
+    }
+
+    private void GlobalHotKey_OnRegistrationRecovered()
+    {
+        const string message = "Ctrl+F1 快捷键已恢复";
+        _mainWindow.SetStatus(message);
+        _tray.ShowInfo(message);
     }
 
     private void MainWindow_OnHidden()
@@ -222,6 +352,387 @@ public sealed class AppController : IDisposable
         _manualTranslationWindow.ShowAndActivate();
     }
 
+    private void ShowQuickNotebook()
+    {
+        _quickNotebookWindow.ShowAndActivate();
+    }
+
+    private void StartScreenshotTranslation() => BeginScreenshotTranslation(
+        preferredScreenPoint: null,
+        directDragGestureId: null);
+
+    private void MouseHook_OnScreenshotRequested(object? sender, ScreenshotRequestedEventArgs e)
+    {
+        if (_disposed || !GetSettings().ScreenshotTranslationEnabled)
+        {
+            return;
+        }
+
+        BeginScreenshotTranslation(e.TriggerPoint, e.GestureId);
+    }
+
+    private void BeginScreenshotTranslation(
+        ScreenPoint? preferredScreenPoint,
+        long? directDragGestureId)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        var request = new CancellationTokenSource();
+        CancellationTokenSource? superseded;
+        lock (_screenshotRequestGate)
+        {
+            superseded = _screenshotTranslation;
+            _screenshotTranslation = request;
+        }
+
+        TryCancel(superseded);
+        _screenRegionCapture.Cancel();
+        _coordinator.CancelPending(hidePopup: true);
+        if (!_application.Dispatcher.HasShutdownStarted)
+        {
+            _application.Dispatcher.BeginInvoke(_screenshotOverlay.HideOverlay);
+        }
+
+        _ = CaptureAndTranslateScreenshotAsync(
+            preferredScreenPoint,
+            directDragGestureId,
+            request);
+    }
+
+    private async Task CaptureAndTranslateScreenshotAsync(
+        ScreenPoint? preferredScreenPoint,
+        long? directDragGestureId,
+        CancellationTokenSource request)
+    {
+        IDisposable? screenshotGestureSuppression = null;
+        ScreenRect? overlayBounds = null;
+
+        try
+        {
+            screenshotGestureSuppression = _mouseHook.SuppressScreenshotRequests();
+            await HideTransientWindowsForCaptureAsync(request.Token).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromMilliseconds(70), request.Token).ConfigureAwait(false);
+
+            ScreenRegionCaptureResult capture = await CaptureRegionWithBusyRetryAsync(
+                    preferredScreenPoint,
+                    directDragGestureId,
+                    request.Token)
+                .ConfigureAwait(false);
+
+            screenshotGestureSuppression.Dispose();
+            screenshotGestureSuppression = null;
+
+            if (capture.Status == ScreenRegionCaptureStatus.Cancelled)
+            {
+                return;
+            }
+
+            if (!capture.IsSuccess || capture.PhysicalBounds is not { } bounds || capture.PngBytes is null)
+            {
+                string message = capture.Status switch
+                {
+                    ScreenRegionCaptureStatus.Busy => "已有截图任务正在进行。",
+                    ScreenRegionCaptureStatus.EmptySelection => "请拖动框选需要翻译的区域。",
+                    _ => "截图失败，请稍后重试。"
+                };
+                await ShowScreenshotErrorIfCurrentAsync(
+                    "截图翻译",
+                    message,
+                    physicalBounds: null,
+                    request).ConfigureAwait(false);
+                return;
+            }
+
+            overlayBounds = bounds;
+            await OnUiAsync(
+                () =>
+                {
+                    _screenshotOverlay.ShowLoading(
+                        string.Empty,
+                        bounds,
+                        "正在识别…",
+                        capture.PngBytes);
+                    _mainWindow.KeepAboveWithoutActivation();
+                },
+                request.Token).ConfigureAwait(false);
+
+            OcrRecognitionResult recognition = await _ocrService
+                .RecognizeAsync(capture.PngBytes, request.Token)
+                .ConfigureAwait(false);
+
+            if (recognition.Status == OcrRecognitionStatus.Cancelled)
+            {
+                return;
+            }
+
+            if (!recognition.IsSuccess)
+            {
+                string message = recognition.Status switch
+                {
+                    OcrRecognitionStatus.NoText => "未识别到可翻译的文字，请框选更清晰的区域。",
+                    OcrRecognitionStatus.EngineUnavailable => _ocrService.AvailabilityMessage,
+                    OcrRecognitionStatus.EmptyImage or OcrRecognitionStatus.InvalidImage => "截图图像无法识别，请重新框选。",
+                    _ => "离线 OCR 识别失败，请稍后重试。"
+                };
+                await ShowScreenshotErrorIfCurrentAsync(
+                    "截图翻译",
+                    message,
+                    bounds,
+                    request).ConfigureAwait(false);
+                return;
+            }
+
+            string source = TextHeuristics.Normalize(
+                OcrTextLayout.ReconstructParagraphs(recognition.Blocks, recognition.Text));
+            if (source.Length == 0)
+            {
+                await ShowScreenshotErrorIfCurrentAsync(
+                    "截图翻译",
+                    "未识别到可翻译的文字。",
+                    bounds,
+                    request).ConfigureAwait(false);
+                return;
+            }
+
+            var settings = GetSettings();
+            var translationRequest = CreateScreenshotTranslationRequest(source);
+            await OnUiAsync(
+                () =>
+                {
+                    _screenshotOverlay.ShowLoading(
+                        source,
+                        bounds,
+                        "正在翻译…");
+                    _mainWindow.KeepAboveWithoutActivation();
+                },
+                request.Token).ConfigureAwait(false);
+
+            TranslationResult result = await _translationService
+                .TranslateAsync(translationRequest, settings, request.Token)
+                .ConfigureAwait(false);
+
+            if (!IsCurrentScreenshotRequest(request))
+            {
+                return;
+            }
+
+            await OnUiAsync(
+                () =>
+                {
+                    if (IsCurrentScreenshotRequest(request))
+                    {
+                        _screenshotOverlay.ShowResult(
+                            source,
+                            result.TranslatedText,
+                            bounds,
+                            result.Origin,
+                            result.UsedFallback,
+                            recognition.Blocks);
+                        _mainWindow.KeepAboveWithoutActivation();
+                    }
+                },
+                request.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Esc, toast dismissal, shutdown, or a newer screenshot superseded this request.
+        }
+        catch (TranslationProviderException exception)
+        {
+            await ShowScreenshotErrorIfCurrentAsync(
+                "截图翻译",
+                exception.Message,
+                overlayBounds,
+                request).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            await ShowScreenshotErrorIfCurrentAsync(
+                "截图翻译",
+                "截图翻译失败，请稍后重试。",
+                overlayBounds,
+                request).ConfigureAwait(false);
+        }
+        finally
+        {
+            screenshotGestureSuppression?.Dispose();
+            lock (_screenshotRequestGate)
+            {
+                if (ReferenceEquals(_screenshotTranslation, request))
+                {
+                    _screenshotTranslation = null;
+                }
+            }
+
+            request.Dispose();
+        }
+    }
+
+    private async Task<ScreenRegionCaptureResult> CaptureRegionWithBusyRetryAsync(
+        ScreenPoint? preferredScreenPoint,
+        long? directDragGestureId,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var capture = await _screenRegionCapture
+                .CaptureAsync(preferredScreenPoint, directDragGestureId, cancellationToken)
+                .ConfigureAwait(false);
+            if (capture.Status != ScreenRegionCaptureStatus.Busy)
+            {
+                return capture;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(40), cancellationToken).ConfigureAwait(false);
+        }
+
+        return ScreenRegionCaptureResult.WithoutImage(ScreenRegionCaptureStatus.Busy);
+    }
+
+    private async Task HideTransientWindowsForCaptureAsync(CancellationToken cancellationToken)
+    {
+        await OnUiAsync(
+            () =>
+            {
+                // Starting a screenshot is not a user request to minimize the
+                // launcher. Keep its visibility, size, position, and window
+                // state unchanged; only explicit minimize/close actions may
+                // hide it.
+                _settingsWindow.Hide();
+                _manualTranslationWindow.Hide();
+                _quickNotebookWindow.Hide();
+                _popup.HidePopup();
+                _screenshotOverlay.HideOverlay();
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task ShowScreenshotErrorIfCurrentAsync(
+        string source,
+        string message,
+        ScreenRect? physicalBounds,
+        CancellationTokenSource request)
+    {
+        if (!IsCurrentScreenshotRequest(request))
+        {
+            return;
+        }
+
+        try
+        {
+            await OnUiAsync(
+                () =>
+                {
+                    if (IsCurrentScreenshotRequest(request))
+                    {
+                        if (physicalBounds is { } bounds)
+                        {
+                            _screenshotOverlay.ShowError(source, message, bounds);
+                            _mainWindow.KeepAboveWithoutActivation();
+                        }
+                        else
+                        {
+                            _tray.ShowInfo(message);
+                        }
+                    }
+                },
+                request.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception)
+        {
+            // The dispatcher can be shutting down while an error is being surfaced.
+        }
+    }
+
+    private bool IsCurrentScreenshotRequest(CancellationTokenSource request)
+    {
+        lock (_screenshotRequestGate)
+        {
+            return !_disposed
+                && ReferenceEquals(_screenshotTranslation, request)
+                && !request.IsCancellationRequested;
+        }
+    }
+
+    private void ScreenshotOverlay_OnDismissed() => CancelScreenshotTranslation(hidePopup: false);
+
+    private void CancelScreenshotTranslation(bool hidePopup)
+    {
+        CancellationTokenSource? request;
+        lock (_screenshotRequestGate)
+        {
+            request = _screenshotTranslation;
+            _screenshotTranslation = null;
+        }
+
+        TryCancel(request);
+        _screenRegionCapture.Cancel();
+        if (hidePopup && !_application.Dispatcher.HasShutdownStarted)
+        {
+            _application.Dispatcher.BeginInvoke(_screenshotOverlay.HideOverlay);
+        }
+    }
+
+    private static void TryCancel(CancellationTokenSource? request)
+    {
+        try
+        {
+            request?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Completion can race a newer screenshot or application shutdown.
+        }
+    }
+
+    private Task OnUiAsync(Action action, CancellationToken cancellationToken) =>
+        _application.Dispatcher.InvokeAsync(action, DispatcherPriority.Normal, cancellationToken).Task;
+
+    private static TranslationRequest CreateScreenshotTranslationRequest(string source)
+    {
+        var chineseLetters = 0;
+        var otherLetters = 0;
+        foreach (Rune rune in source.EnumerateRunes())
+        {
+            UnicodeCategory category = Rune.GetUnicodeCategory(rune);
+            if (category is not (UnicodeCategory.UppercaseLetter
+                or UnicodeCategory.LowercaseLetter
+                or UnicodeCategory.TitlecaseLetter
+                or UnicodeCategory.ModifierLetter
+                or UnicodeCategory.OtherLetter))
+            {
+                continue;
+            }
+
+            if (IsChinese(rune.Value))
+            {
+                chineseLetters++;
+            }
+            else
+            {
+                otherLetters++;
+            }
+        }
+
+        bool translateToEnglish = chineseLetters > 0 && chineseLetters * 2 >= otherLetters;
+        return translateToEnglish
+            ? new TranslationRequest(source, "zh-CN", "en")
+            : new TranslationRequest(source, "en", "zh-CN");
+    }
+
+    private static bool IsChinese(int value) => value is >= 0x3400 and <= 0x4DBF
+        or >= 0x4E00 and <= 0x9FFF
+        or >= 0xF900 and <= 0xFAFF
+        or >= 0x20000 and <= 0x2EBEF
+        or >= 0x2F800 and <= 0x2FA1F
+        or >= 0x30000 and <= 0x323AF;
+
     private void SetAutoCapture(bool enabled)
     {
         try
@@ -231,24 +742,27 @@ public sealed class AppController : IDisposable
             SetAndSaveSettings(updated);
 
             var effective = ApplyCaptureState(enabled);
-            if (effective != enabled)
+            if (effective.AutoCaptureEnabled != enabled
+                || effective.ScreenshotTranslationEnabled != updated.ScreenshotTranslationEnabled)
             {
                 var rolledBack = CopySettings(GetSettings());
-                rolledBack.AutoCaptureEnabled = effective;
+                rolledBack.AutoCaptureEnabled = effective.AutoCaptureEnabled;
+                rolledBack.ScreenshotTranslationEnabled = effective.ScreenshotTranslationEnabled;
                 SetAndSaveSettings(rolledBack);
+                _settingsWindow.SetScreenshotTranslationState(effective.ScreenshotTranslationEnabled);
             }
 
-            PublishAutoCaptureState(effective);
-            if (effective != enabled)
+            PublishAutoCaptureState(effective.AutoCaptureEnabled);
+            if (effective.HookStartFailed)
             {
-                const string message = "无法启动全局取词，请重启程序后再试";
+                const string message = "无法启动全局鼠标监听；自动划词和截图手势已关闭";
                 _mainWindow.SetStatus(message, true);
                 _settingsWindow.SetStatus(message, true);
                 _tray.ShowInfo(message);
                 return;
             }
 
-            var status = effective ? "自动划词已开启" : "自动划词已暂停";
+            var status = effective.AutoCaptureEnabled ? "自动划词已开启" : "自动划词已暂停";
             _mainWindow.SetStatus(status);
             _settingsWindow.SetStatus(status);
         }
@@ -261,25 +775,41 @@ public sealed class AppController : IDisposable
         }
     }
 
-    private bool ApplyCaptureState(bool enabled)
+    private CaptureActivationResult ApplyCaptureState(bool enabled)
     {
-        _clipboardFallback.Enabled = GetSettings().ClipboardFallbackEnabled;
+        var settings = GetSettings();
+        _clipboardFallback.Enabled = settings.ClipboardFallbackEnabled;
+        _mouseHook.ScreenshotGestureEnabled = settings.ScreenshotTranslationEnabled;
+
+        if (!settings.ScreenshotTranslationEnabled)
+        {
+            CancelScreenshotTranslation(hidePopup: true);
+        }
+
         if (!enabled)
         {
             _coordinator.CancelPending(hidePopup: true);
+        }
+
+        if (!enabled && !settings.ScreenshotTranslationEnabled)
+        {
             _mouseHook.Stop();
-            return false;
+            return new CaptureActivationResult(false, false, HookStartFailed: false);
         }
 
         try
         {
             _mouseHook.Start();
-            return true;
+            return new CaptureActivationResult(
+                enabled,
+                settings.ScreenshotTranslationEnabled,
+                HookStartFailed: false);
         }
         catch (Exception)
         {
             _mouseHook.Stop();
-            return false;
+            _mouseHook.ScreenshotGestureEnabled = false;
+            return new CaptureActivationResult(false, false, HookStartFailed: true);
         }
     }
 
@@ -311,8 +841,9 @@ public sealed class AppController : IDisposable
 
             var current = GetSettings();
             var updated = CopySettings(current);
-            updated.AutoCaptureEnabled = input.AutoCaptureEnabled;
             updated.ClipboardFallbackEnabled = input.ClipboardFallbackEnabled;
+            updated.ScreenshotTranslationEnabled = input.ScreenshotTranslationEnabled;
+            updated.StartWithWindowsEnabled = input.StartWithWindowsEnabled;
             updated.CaptureDelayMs = input.CaptureDelayMs;
             updated.PopupDurationSeconds = input.PopupDurationSeconds;
             updated.TranslationMode = input.TranslationMode;
@@ -321,15 +852,33 @@ public sealed class AppController : IDisposable
             CaptureWindowPlacement(updated);
             SetAndSaveSettings(updated);
 
-            var effectiveCaptureState = ApplyCaptureState(GetSettings().AutoCaptureEnabled);
-            if (effectiveCaptureState != GetSettings().AutoCaptureEnabled)
+            string? startupError = null;
+            try
+            {
+                _startupService.SetEnabled(updated.StartWithWindowsEnabled);
+            }
+            catch (StartupRegistrationException)
             {
                 var rolledBack = CopySettings(GetSettings());
-                rolledBack.AutoCaptureEnabled = effectiveCaptureState;
+                rolledBack.StartWithWindowsEnabled = current.StartWithWindowsEnabled;
+                SetAndSaveSettings(rolledBack);
+                _settingsWindow.SetStartWithWindowsState(current.StartWithWindowsEnabled);
+                startupError = "其他设置已保存，但开机自动启动设置失败";
+            }
+
+            var requestedCaptureSettings = GetSettings();
+            var effectiveCaptureState = ApplyCaptureState(requestedCaptureSettings.AutoCaptureEnabled);
+            if (effectiveCaptureState.AutoCaptureEnabled != requestedCaptureSettings.AutoCaptureEnabled
+                || effectiveCaptureState.ScreenshotTranslationEnabled
+                    != requestedCaptureSettings.ScreenshotTranslationEnabled)
+            {
+                var rolledBack = CopySettings(GetSettings());
+                rolledBack.AutoCaptureEnabled = effectiveCaptureState.AutoCaptureEnabled;
+                rolledBack.ScreenshotTranslationEnabled = effectiveCaptureState.ScreenshotTranslationEnabled;
                 SetAndSaveSettings(rolledBack);
             }
 
-            PublishAutoCaptureState(effectiveCaptureState);
+            PublishAutoCaptureState(effectiveCaptureState.AutoCaptureEnabled);
             var canonical = GetSettings();
             var hasApiKey = HasApiKey();
             _settingsWindow.LoadSettings(canonical, hasApiKey, _offlineTranslationProvider.IsAvailable);
@@ -338,11 +887,18 @@ public sealed class AppController : IDisposable
                 _offlineTranslationProvider.AvailabilityMessage);
             _mainWindow.SetServiceConfigured(IsTranslationReady(canonical, hasApiKey));
 
-            if (effectiveCaptureState != input.AutoCaptureEnabled)
+            if (effectiveCaptureState.HookStartFailed)
             {
-                const string message = "设置已保存，但全局取词启动失败";
+                const string message = "设置已保存，但全局鼠标监听启动失败；自动划词和截图手势已关闭";
                 _settingsWindow.SetStatus(message, true);
                 _mainWindow.SetStatus(message, true);
+                return;
+            }
+
+            if (startupError is not null)
+            {
+                _settingsWindow.SetStatus(startupError, true);
+                _mainWindow.SetStatus(startupError, true);
                 return;
             }
 
@@ -381,10 +937,10 @@ public sealed class AppController : IDisposable
 
         try
         {
-            var settings = GetSettings();
             _manualTranslationWindow.SetStatus("正在翻译…");
+            var settings = GetSettings();
             var result = await _translationService.TranslateAsync(
-                new TranslationRequest(source, settings.SourceLanguage, settings.TargetLanguage),
+                _manualTranslationWindow.CreateTranslationRequest(source),
                 settings,
                 requestCancellation.Token);
 
@@ -443,7 +999,7 @@ public sealed class AppController : IDisposable
                 return;
             }
 
-            _settingsWindow.SetOfflineAvailability(true, "内置英语 → 简体中文模型已加载，可断网使用");
+            _settingsWindow.SetOfflineAvailability(true, "内置英语 ↔ 简体中文模型已就绪，可断网使用");
             _mainWindow.SetServiceConfigured(true);
         }
         catch (OperationCanceledException)
@@ -584,10 +1140,17 @@ public sealed class AppController : IDisposable
         _application.Shutdown();
     }
 
+    private readonly record struct CaptureActivationResult(
+        bool AutoCaptureEnabled,
+        bool ScreenshotTranslationEnabled,
+        bool HookStartFailed);
+
     private static AppSettings CopySettings(AppSettings source) => new()
     {
         AutoCaptureEnabled = source.AutoCaptureEnabled,
         ClipboardFallbackEnabled = source.ClipboardFallbackEnabled,
+        ScreenshotTranslationEnabled = source.ScreenshotTranslationEnabled,
+        StartWithWindowsEnabled = source.StartWithWindowsEnabled,
         CaptureDelayMs = source.CaptureDelayMs,
         PopupDurationSeconds = source.PopupDurationSeconds,
         ApiBaseUrl = source.ApiBaseUrl,

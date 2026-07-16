@@ -9,6 +9,7 @@ const translator = new LatencyOptimisedTranslator({
 });
 
 const reply = message => window.chrome.webview.postMessage(message);
+const supportedPairs = new Set(["en:zh", "zh:en"]);
 
 window.chrome.webview.addEventListener("message", async event => {
   const request = event.data;
@@ -22,9 +23,15 @@ window.chrome.webview.addEventListener("message", async event => {
       throw new Error("没有可翻译的文本。");
     }
 
+    const from = typeof request.from === "string" ? request.from.toLowerCase() : "";
+    const to = typeof request.to === "string" ? request.to.toLowerCase() : "";
+    if (!supportedPairs.has(`${from}:${to}`)) {
+      throw new Error("内置离线模型仅支持英语与简体中文互译。");
+    }
+
     const response = await translator.translate({
-      from: "en",
-      to: "zh",
+      from,
+      to,
       text,
       html: false,
       qualityScores: false

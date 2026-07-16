@@ -5,19 +5,35 @@
     "license": "MPL-2.0",
     "source": "https://github.com/browsermt/bergamot-translator"
   },
-  "model": {
-    "name": "Mozilla Firefox Translations en-zh base-memory",
-    "registryGenerated": "2026-07-15T00:48:23Z",
-    "sourceLanguage": "en",
-    "targetLanguage": "zh",
-    "architecture": "base-memory",
-    "releaseStatus": "Release",
-    "source": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/db/models.json",
-    "files": {
-      "lex.50.50.enzh.s2t.bin": "8575d8daa10e2dbff316dcdf8e1ce475357bcc2c92bdc63b736a2d5add22f681",
-      "model.enzh.intgemm.alphas.bin": "4e5accc141373565ddc8fa1565bceaa8d0c3482a82cab8131c719ebcc6c2157c",
-      "srcvocab.enzh.spm": "bd9b65504acc6d9726dd281f7defc2adb7c2c22d0688fe2f84697de25197c8c5",
-      "trgvocab.enzh.spm": "aded6993c36e440284d11cec3f6b8aef9c0e43188a772d80be342a713adf223d"
+  "models": [
+    {
+      "name": "Mozilla Firefox Translations en-zh base-memory",
+      "registryGenerated": "2026-07-15T00:48:23Z",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh",
+      "architecture": "base-memory",
+      "releaseStatus": "Release",
+      "source": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/db/models.json",
+      "files": {
+        "lex.50.50.enzh.s2t.bin": "8575d8daa10e2dbff316dcdf8e1ce475357bcc2c92bdc63b736a2d5add22f681",
+        "model.enzh.intgemm.alphas.bin": "4e5accc141373565ddc8fa1565bceaa8d0c3482a82cab8131c719ebcc6c2157c",
+        "srcvocab.enzh.spm": "bd9b65504acc6d9726dd281f7defc2adb7c2c22d0688fe2f84697de25197c8c5",
+        "trgvocab.enzh.spm": "aded6993c36e440284d11cec3f6b8aef9c0e43188a772d80be342a713adf223d"
+      }
+    },
+    {
+      "name": "Mozilla Firefox Translations zh-en base-memory",
+      "registryGenerated": "2026-07-15T00:48:23Z",
+      "sourceLanguage": "zh",
+      "targetLanguage": "en",
+      "architecture": "base-memory",
+      "releaseStatus": "Release Android",
+      "source": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/db/models.json",
+      "files": {
+        "lex.50.50.zhen.s2t.bin": "8524dd4c93ffd7f0ae7be32f77a7c14fea7cdbbebe34ea6ad0ec368d5ddd8b13",
+        "model.zhen.intgemm.alphas.bin": "5cd149601802fc8a18124a1c1306144dbbedc058630c4ddb2d53aa76fa9c7c06",
+        "vocab.zhen.spm": "dff594318ab7d8b7b60b844ab98ebe6b932ae8045fab15235404c787715965b3"
+      }
     }
-  }
+  ]
 }

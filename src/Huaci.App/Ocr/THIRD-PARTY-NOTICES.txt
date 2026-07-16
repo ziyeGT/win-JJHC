@@ -1,0 +1,22 @@
+Huaci offline OCR third-party notices
+=====================================
+
+RapidOcrNet 2.0.0
+Copyright its contributors.
+https://github.com/BobLd/RapidOcrNet
+Licensed under the Apache License, Version 2.0.
+
+RapidOcrNet is based on RapidOCR and contains work derived from PdfPig and
+PContour/PContourNet:
+- https://github.com/RapidAI/RapidOCR
+- https://github.com/UglyToad/PdfPig
+- https://github.com/LingDong-/PContour
+- https://github.com/BobLd/PContourNet
+
+PP-OCRv5 models and dictionaries
+Copyright PaddlePaddle Authors and their contributors.
+https://github.com/PaddlePaddle/PaddleOCR
+Distributed under the Apache License, Version 2.0.
+
+The complete Apache License, Version 2.0 is included at
+Ocr/licenses/Apache-2.0.txt.

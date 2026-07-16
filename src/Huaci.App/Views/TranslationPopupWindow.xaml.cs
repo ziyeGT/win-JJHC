@@ -6,6 +6,15 @@ using Huaci.App.Models;
 
 namespace Huaci.App.Views;
 
+/// <summary>
+/// Controls whether a popup follows the transient toast policy or remains until explicitly closed.
+/// </summary>
+public enum TranslationPopupDismissMode
+{
+    Automatic,
+    ManualCloseOnly
+}
+
 public partial class TranslationPopupWindow : Window
 {
     private const int GwlExStyle = -20;
@@ -24,7 +33,9 @@ public partial class TranslationPopupWindow : Window
     private readonly ToastDismissPolicy _dismissPolicy = new();
     private int _lastDuration = 5;
     private bool _updatingPinState;
+    private bool _automaticDismissSuspended;
     private bool _allowClose;
+    private TranslationPopupDismissMode _dismissMode = TranslationPopupDismissMode.Automatic;
 
     public TranslationPopupWindow()
     {
@@ -34,9 +45,14 @@ public partial class TranslationPopupWindow : Window
         MouseEnter += (_, _) => _dismissPolicy.PointerEntered();
         MouseLeave += (_, _) =>
         {
+            if (IsAutomaticDismissBlocked)
+            {
+                return;
+            }
+
             if (_dismissPolicy.PointerLeft(DateTimeOffset.UtcNow))
             {
-                DismissFromUser();
+                DismissAutomatically();
             }
         };
         SourceInitialized += OnSourceInitialized;
@@ -51,9 +67,17 @@ public partial class TranslationPopupWindow : Window
     public string CurrentResult { get; private set; } = string.Empty;
     public TranslationOrigin? CurrentOrigin { get; private set; }
     public bool IsPinned => _dismissPolicy.IsPinned;
+    public TranslationPopupDismissMode DismissMode => _dismissMode;
 
-    public void ShowLoading(string source, Rect anchor, int autoHideSeconds)
+    public void ShowLoading(
+        string source,
+        Rect anchor,
+        int autoHideSeconds,
+        bool keepVisibleUntilUpdated = false,
+        TranslationPopupDismissMode dismissMode = TranslationPopupDismissMode.Automatic)
     {
+        _dismissMode = dismissMode;
+        _automaticDismissSuspended = keepVisibleUntilUpdated;
         CurrentSource = source;
         CurrentResult = string.Empty;
         CurrentOrigin = null;
@@ -74,8 +98,11 @@ public partial class TranslationPopupWindow : Window
         Rect anchor,
         int autoHideSeconds,
         TranslationOrigin origin = TranslationOrigin.Online,
-        bool usedFallback = false)
+        bool usedFallback = false,
+        TranslationPopupDismissMode dismissMode = TranslationPopupDismissMode.Automatic)
     {
+        _dismissMode = dismissMode;
+        _automaticDismissSuspended = false;
         CurrentSource = source;
         CurrentResult = result;
         CurrentOrigin = origin;
@@ -96,8 +123,15 @@ public partial class TranslationPopupWindow : Window
         ShowAt(anchor, autoHideSeconds);
     }
 
-    public void ShowError(string source, string error, Rect anchor, int autoHideSeconds)
+    public void ShowError(
+        string source,
+        string error,
+        Rect anchor,
+        int autoHideSeconds,
+        TranslationPopupDismissMode dismissMode = TranslationPopupDismissMode.Automatic)
     {
+        _dismissMode = dismissMode;
+        _automaticDismissSuspended = false;
         CurrentSource = source;
         CurrentResult = string.Empty;
         CurrentOrigin = null;
@@ -118,6 +152,8 @@ public partial class TranslationPopupWindow : Window
     /// </summary>
     public void HidePopup()
     {
+        _automaticDismissSuspended = false;
+        _dismissMode = TranslationPopupDismissMode.Automatic;
         _presenceTimer.Stop();
         ResetPinState();
         Hide();
@@ -125,6 +161,8 @@ public partial class TranslationPopupWindow : Window
 
     public void CloseForExit()
     {
+        _automaticDismissSuspended = false;
+        _dismissMode = TranslationPopupDismissMode.Automatic;
         _allowClose = true;
         _presenceTimer.Stop();
         ResetPinState();
@@ -146,6 +184,9 @@ public partial class TranslationPopupWindow : Window
     private void ShowAt(Rect anchor, int autoHideSeconds)
     {
         _lastDuration = Math.Clamp(autoHideSeconds, 2, 60);
+        PinButton.Visibility = _dismissMode == TranslationPopupDismissMode.ManualCloseOnly
+            ? Visibility.Collapsed
+            : Visibility.Visible;
         var shouldPosition = !IsVisible || !_dismissPolicy.IsPinned;
 
         if (!IsVisible)
@@ -159,7 +200,7 @@ public partial class TranslationPopupWindow : Window
             PositionWindow(anchor);
         }
 
-        if (_dismissPolicy.IsPinned)
+        if (_dismissPolicy.IsPinned || IsAutomaticDismissBlocked)
         {
             _presenceTimer.Stop();
             return;
@@ -179,7 +220,7 @@ public partial class TranslationPopupWindow : Window
 
     private void PresenceTimer_OnTick(object? sender, EventArgs e)
     {
-        if (_dismissPolicy.IsPinned || !IsVisible)
+        if (_dismissPolicy.IsPinned || IsAutomaticDismissBlocked || !IsVisible)
         {
             _presenceTimer.Stop();
             return;
@@ -193,8 +234,21 @@ public partial class TranslationPopupWindow : Window
                 cursorDistance,
                 TimeSpan.FromSeconds(_lastDuration)))
         {
-            DismissFromUser();
+            DismissAutomatically();
         }
+    }
+
+    private bool IsAutomaticDismissBlocked =>
+        _automaticDismissSuspended || _dismissMode == TranslationPopupDismissMode.ManualCloseOnly;
+
+    private void DismissAutomatically()
+    {
+        if (IsAutomaticDismissBlocked)
+        {
+            return;
+        }
+
+        DismissFromUser();
     }
 
     private bool TryGetCursorDistanceFromWindow(out double distance)
@@ -357,7 +411,7 @@ public partial class TranslationPopupWindow : Window
 
         _dismissPolicy.SetPinned(false, DateTimeOffset.UtcNow, IsMouseOver);
         PinButton.ToolTip = "固定窗口";
-        if (IsVisible)
+        if (IsVisible && !IsAutomaticDismissBlocked)
         {
             ResetPresenceTracking();
         }

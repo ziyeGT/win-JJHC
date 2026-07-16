@@ -6,7 +6,7 @@ Licensed under the Mozilla Public License 2.0 (MPL-2.0).
 Source: https://github.com/browsermt/bergamot-translator
 Bundled npm package: @browsermt/bergamot-translator 0.4.9
 
-Mozilla Firefox Translations English-to-Chinese model
+Mozilla Firefox Translations English-to-Chinese and Chinese-to-English models
 Produced and published by the Mozilla Translations project.
 Project source: https://github.com/mozilla/translations
 Model registry: https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/db/models.json

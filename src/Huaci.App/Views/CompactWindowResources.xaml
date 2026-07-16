@@ -19,8 +19,8 @@
     <FontFamily x:Key="IconFont">Segoe MDL2 Assets</FontFamily>
 
     <Style TargetType="{x:Type Button}">
-        <Setter Property="MinHeight" Value="30" />
-        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="MinHeight" Value="28" />
+        <Setter Property="Padding" Value="9,3" />
         <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
         <Setter Property="Background" Value="#18FFFFFF" />
         <Setter Property="BorderBrush" Value="Transparent" />
@@ -67,18 +67,18 @@
     </Style>
 
     <Style x:Key="HeaderIconButton" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
-        <Setter Property="Width" Value="28" />
-        <Setter Property="Height" Value="28" />
-        <Setter Property="MinHeight" Value="28" />
-        <Setter Property="Padding" Value="7" />
+        <Setter Property="Width" Value="26" />
+        <Setter Property="Height" Value="26" />
+        <Setter Property="MinHeight" Value="26" />
+        <Setter Property="Padding" Value="6" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
     </Style>
 
     <Style x:Key="HeaderIconToggle" TargetType="{x:Type ToggleButton}">
-        <Setter Property="Width" Value="28" />
-        <Setter Property="Height" Value="28" />
-        <Setter Property="Padding" Value="7" />
+        <Setter Property="Width" Value="26" />
+        <Setter Property="Height" Value="26" />
+        <Setter Property="Padding" Value="6" />
         <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="Transparent" />
@@ -115,10 +115,14 @@
     </Style>
 
     <Style x:Key="ModuleButton" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
-        <Setter Property="Padding" Value="4" />
-        <Setter Property="Margin" Value="3" />
+        <Setter Property="Padding" Value="3" />
+        <Setter Property="Margin" Value="2" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="Transparent" />
+        <!-- Launcher modules are pointer-first actions. Prevent a mouse click from
+             leaving WPF's blue/dotted keyboard focus frame behind. -->
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="VerticalContentAlignment" Value="Stretch" />
         <Setter Property="Template">
@@ -128,7 +132,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="9">
+                            CornerRadius="8">
                         <ContentPresenter Margin="{TemplateBinding Padding}"
                                           HorizontalAlignment="Stretch"
                                           VerticalAlignment="Stretch" />
@@ -140,9 +144,6 @@
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Chrome" Property="Background" Value="{StaticResource PressedBrush}" />
                         </Trigger>
-                        <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-                        </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
@@ -150,14 +151,15 @@
     </Style>
 
     <Style x:Key="ModuleToggle" TargetType="{x:Type ToggleButton}">
-        <Setter Property="Padding" Value="4" />
-        <Setter Property="Margin" Value="3" />
+        <Setter Property="Padding" Value="3" />
+        <Setter Property="Margin" Value="2" />
         <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="Focusable" Value="True" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type ToggleButton}">
@@ -165,7 +167,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="9">
+                            CornerRadius="8">
                         <ContentPresenter Margin="{TemplateBinding Padding}"
                                           HorizontalAlignment="Stretch"
                                           VerticalAlignment="Stretch" />
@@ -182,9 +184,6 @@
                             <Setter TargetName="Chrome" Property="BorderBrush" Value="#4063D48C" />
                             <Setter Property="Foreground" Value="White" />
                         </Trigger>
-                        <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-                        </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
@@ -192,8 +191,8 @@
     </Style>
 
     <Style TargetType="{x:Type TextBox}">
-        <Setter Property="Height" Value="30" />
-        <Setter Property="Padding" Value="9,4" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Padding" Value="8,3" />
         <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
         <Setter Property="CaretBrush" Value="White" />
         <Setter Property="SelectionBrush" Value="{StaticResource AccentBrush}" />
@@ -228,8 +227,8 @@
     </Style>
 
     <Style TargetType="{x:Type PasswordBox}">
-        <Setter Property="Height" Value="30" />
-        <Setter Property="Padding" Value="9,4" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Padding" Value="8,3" />
         <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
         <Setter Property="CaretBrush" Value="White" />
         <Setter Property="Background" Value="{StaticResource FieldBrush}" />
@@ -264,11 +263,11 @@
                 <ControlTemplate TargetType="{x:Type CheckBox}">
                     <Grid Background="Transparent">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="15" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <Border x:Name="Box"
-                                Width="15" Height="15"
+                                Width="14" Height="14"
                                 CornerRadius="4"
                                 Background="{StaticResource FieldBrush}"
                                 BorderBrush="{StaticResource MainBorderBrush}"
@@ -276,7 +275,7 @@
                             <TextBlock x:Name="CheckMark"
                                        Text="&#xE73E;"
                                        FontFamily="{StaticResource IconFont}"
-                                       FontSize="10"
+                                       FontSize="9"
                                        Foreground="White"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center"
@@ -310,28 +309,28 @@
         <Setter Property="BorderBrush" Value="{StaticResource MainBorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="8" />
-        <Setter Property="Padding" Value="10" />
+        <Setter Property="Padding" Value="9" />
     </Style>
 
     <Style x:Key="SectionTitle" TargetType="{x:Type TextBlock}">
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontSize" Value="11.5" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
     </Style>
 
     <Style x:Key="FieldLabel" TargetType="{x:Type TextBlock}">
-        <Setter Property="FontSize" Value="9.5" />
+        <Setter Property="FontSize" Value="9" />
         <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
     </Style>
 
     <Style TargetType="{x:Type ScrollBar}">
-        <Setter Property="Width" Value="6" />
-        <Setter Property="MinWidth" Value="6" />
+        <Setter Property="Width" Value="5" />
+        <Setter Property="MinWidth" Value="5" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type ScrollBar}">
-                    <Grid Width="6" Background="Transparent">
+                    <Grid Width="5" Background="Transparent">
                         <Track x:Name="PART_Track"
                                Margin="1,0"
                                IsDirectionReversed="True"
@@ -343,7 +342,7 @@
                                 <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}" Focusable="False" Opacity="0" />
                             </Track.DecreaseRepeatButton>
                             <Track.Thumb>
-                                <Thumb MinHeight="24" Focusable="False">
+                                <Thumb MinHeight="22" Focusable="False">
                                     <Thumb.Template>
                                         <ControlTemplate TargetType="{x:Type Thumb}">
                                             <Border Background="#5CFFFFFF" CornerRadius="3" />

@@ -12,5 +12,16 @@
     "trgvocab": {
       "name": "/models/en-zh/trgvocab.enzh.spm"
     }
+  },
+  "zhen": {
+    "lex": {
+      "name": "/models/zh-en/lex.50.50.zhen.s2t.bin"
+    },
+    "model": {
+      "name": "/models/zh-en/model.zhen.intgemm.alphas.bin"
+    },
+    "vocab": {
+      "name": "/models/zh-en/vocab.zhen.spm"
+    }
   }
 }

@@ -11,11 +11,12 @@
     <PlatformTarget>x64</PlatformTarget>
     <Platforms>x64</Platforms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\Huaci.ico</ApplicationIcon>
     <AssemblyName>Huaci</AssemblyName>
     <RootNamespace>Huaci</RootNamespace>
-    <Version>1.0.1</Version>
-    <FileVersion>1.0.1.0</FileVersion>
-    <AssemblyVersion>1.0.1.0</AssemblyVersion>
+    <Version>1.3.2</Version>
+    <FileVersion>1.3.2.0</FileVersion>
+    <AssemblyVersion>1.3.2.0</AssemblyVersion>
     <AssemblyTitle>Huaci</AssemblyTitle>
     <Product>划词翻译</Product>
     <Description>Windows 桌面划词翻译工具</Description>
@@ -25,6 +26,11 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
+    <PackageReference Include="RapidOcrNet" Version="2.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\Huaci.ico" />
   </ItemGroup>
 
   <ItemGroup>
@@ -32,6 +38,20 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
+    <None Update="Ocr\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
+
+  <!-- The application uses the Chinese recognizer below, which also covers
+       English. Remove RapidOcrNet's Latin-only recognizer from app outputs. -->
+  <Target Name="RemoveUnusedRapidOcrBuildModels" AfterTargets="CopyModelsBuild">
+    <Delete Files="$(TargetDir)models\v5\latin_PP-OCRv5_rec_mobile_infer.onnx;$(TargetDir)models\v5\ppocrv5_latin_dict.txt" />
+  </Target>
+
+  <Target Name="RemoveUnusedRapidOcrPublishModels" AfterTargets="CopyModelsPublish">
+    <Delete Files="$(PublishDir)models\v5\latin_PP-OCRv5_rec_mobile_infer.onnx;$(PublishDir)models\v5\ppocrv5_latin_dict.txt" />
+  </Target>
 
 </Project>

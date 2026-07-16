@@ -6,6 +6,18 @@ namespace Huaci.App.Services.Capture;
 /// </summary>
 public readonly record struct ScreenPoint(int X, int Y);
 
+/// <summary>
+/// A snapshot of the Ctrl+Alt+left-button screenshot gesture. The low-level
+/// hook retains this state so an overlay that appears after the initial mouse
+/// down can continue the same drag without requiring a second click.
+/// </summary>
+public readonly record struct ScreenshotDragState(
+    long GestureId,
+    ScreenPoint Start,
+    ScreenPoint Current,
+    bool IsButtonDown,
+    uint NativeTimestamp);
+
 /// <summary>A rectangle in physical-screen coordinates.</summary>
 public readonly record struct ScreenRect(double X, double Y, double Width, double Height)
 {
@@ -52,15 +64,72 @@ public sealed class MouseSelectionTriggerEventArgs : EventArgs
     public uint NativeTimestamp { get; }
 }
 
+/// <summary>
+/// Raised when the user presses the left mouse button while both Ctrl and Alt
+/// are held. The triggering click is consumed by the low-level hook and is not
+/// reported as a normal text-selection gesture.
+/// </summary>
+public sealed class ScreenshotRequestedEventArgs : EventArgs
+{
+    public ScreenshotRequestedEventArgs(
+        ScreenPoint triggerPoint,
+        uint nativeTimestamp,
+        long gestureId)
+    {
+        TriggerPoint = triggerPoint;
+        NativeTimestamp = nativeTimestamp;
+        GestureId = gestureId;
+    }
+
+    /// <summary>The physical-screen location at which capture was requested.</summary>
+    public ScreenPoint TriggerPoint { get; }
+
+    public uint NativeTimestamp { get; }
+
+    /// <summary>Identifies the continuous drag that triggered this request.</summary>
+    public long GestureId { get; }
+}
+
 public interface IGlobalMouseHook : IDisposable
 {
     event EventHandler<MouseSelectionTriggerEventArgs>? SelectionTriggered;
 
+    event EventHandler<ScreenshotRequestedEventArgs>? ScreenshotRequested;
+
     bool IsRunning { get; }
+
+    /// <summary>
+    /// Enables the Ctrl+Alt+left-click screenshot gesture independently from
+    /// ordinary text-selection monitoring. When false, the chord is passed to
+    /// the target application without being consumed.
+    /// </summary>
+    bool ScreenshotGestureEnabled { get; set; }
 
     void Start();
 
     void Stop();
+
+    /// <summary>
+    /// Prevents ordinary drag/double-click selection events until the returned
+    /// lease is disposed. Screenshot capture uses this while its overlay owns
+    /// the pointer, so the box-selection drag cannot start a text translation.
+    /// Leases may be nested.
+    /// </summary>
+    IDisposable SuppressSelectionTriggers();
+
+    /// <summary>
+    /// Temporarily lets Ctrl+Alt+left-button input pass through without
+    /// queuing another screenshot request. The capture overlay holds this
+    /// lease so users can keep the modifiers pressed while dragging.
+    /// </summary>
+    IDisposable SuppressScreenshotRequests();
+
+    /// <summary>
+    /// Reads the latest physical coordinates and button state for a screenshot
+    /// drag. The final released state remains available until a newer gesture
+    /// starts, allowing fast drags to finish before the overlay is visible.
+    /// </summary>
+    bool TryGetScreenshotDragState(long gestureId, out ScreenshotDragState state);
 }
 
 public enum SelectionCaptureSource
